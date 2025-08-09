@@ -1,6 +1,7 @@
 """
 Example usage of the context-based transaction system with the new repository architecture
 """
+
 import asyncio
 import sys
 from pathlib import Path
@@ -9,36 +10,49 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from uuid import uuid4
+
+from pydantic import BaseModel
+
+from examples.db_setup import (
+    cleanup_example_data,
+    close_connections,
+    setup_example_schema,
+    setup_postgres_connection,
+)
+from src.db_context import DatabaseManager, transactional
 from src.entities import BaseEntity
 from src.repository import Repository
-from src.db_context import DatabaseManager, transactional
-from pydantic import BaseModel
-from typing import Optional
-from examples.db_setup import setup_postgres_connection, setup_example_schema, cleanup_example_data, close_connections
+
 
 # Example entities and models
 class Post(BaseEntity):
     title: str = "Default Title"
     content: str = "Default Content"
 
+
 class PostSearch(BaseModel):
-    title: Optional[str] = None
-    content: Optional[str] = None
+    title: str | None = None
+    content: str | None = None
+
 
 class PostUpdate(BaseModel):
-    title: Optional[str] = None
-    content: Optional[str] = None
+    title: str | None = None
+    content: str | None = None
+
 
 class PostRepository(Repository[Post, PostSearch, PostUpdate]):
     def __init__(self):
         super().__init__(Post, PostSearch, PostUpdate, "posts")
+
 
 class PostService:
     def __init__(self):
         self.post_repo = PostRepository()
 
     @transactional("default")
-    async def create_post_with_processing(self, title: str, content: str) -> Post | None:
+    async def create_post_with_processing(
+        self, title: str, content: str
+    ) -> Post | None:
         """
         This method automatically runs in a transaction on the 'default' database.
         The @transactional decorator ensures all repository operations share the same transaction.
@@ -62,7 +76,7 @@ class PostService:
         analytics_post = Post(
             id=uuid4(),
             title=f"Analytics: {action}",
-            content=f"Post {post_id} - {action}"
+            content=f"Post {post_id} - {action}",
         )
         return await self.post_repo.create(analytics_post)
 
@@ -86,7 +100,7 @@ class PostService:
             analytics_post = Post(
                 id=uuid4(),
                 title="Analytics Entry",
-                content=f"Logged creation of post: {main_post.id}"
+                content=f"Logged creation of post: {main_post.id}",
             )
             analytics_entry = await self.post_repo.create(analytics_post)
 
@@ -134,7 +148,9 @@ class PostService:
                 # Find and update the post
                 found_post = await self.post_repo.find_by_id(main_post.id)
                 if found_post:
-                    update_data = PostUpdate(content=f"{found_post.content} [WORKFLOW_COMPLETE]")
+                    update_data = PostUpdate(
+                        content=f"{found_post.content} [WORKFLOW_COMPLETE]"
+                    )
                     final_post = await self.post_repo.update(found_post.id, update_data)
                     if not final_post:
                         raise Exception("Failed to update final post")
@@ -147,6 +163,7 @@ class PostService:
             print(f"Workflow failed: {e}")
             # Each transaction scope handles its own rollback
             raise
+
 
 # Advanced usage examples
 class AdvancedPostService:
@@ -189,6 +206,7 @@ class AdvancedPostService:
 
         return archived_count
 
+
 async def main():
     """Demonstrate various transaction patterns"""
 
@@ -201,10 +219,7 @@ async def main():
             database="postgres",
         )
         await setup_postgres_connection(
-            host="localhost",
-            port=5432,
-            database="postgres",
-            pool_name="analytics"
+            host="localhost", port=5432, database="postgres", pool_name="analytics"
         )
         await setup_example_schema()
         await setup_example_schema("analytics")  # Setup second DB schema if needed
@@ -222,39 +237,49 @@ async def main():
         print("\n=== Basic Transaction Examples ===")
 
         # Example 1: Simple transactional method
-        post1 = await service.create_post_with_processing("Example Post", "This is a test post")
+        post1 = await service.create_post_with_processing(
+            "Example Post", "This is a test post"
+        )
         if not post1:
             raise Exception("Post creation failed")
 
         print(f"Created: {post1.title} - {post1.content}")
 
         # Example 2: Multi-database operation (will use same DB for demo)
-        main_post, analytics_post = await service.multi_database_operation("Multi-DB Post", "Content for multiple databases")
+        main_post, analytics_post = await service.multi_database_operation(
+            "Multi-DB Post", "Content for multiple databases"
+        )
         print(f"Main: {main_post.title}, Analytics: {analytics_post.title}")
 
         # Example 3: Bulk operation
         bulk_data = [
             {"title": "Bulk Post 1", "content": "First bulk post"},
             {"title": "Bulk Post 2", "content": "Second bulk post"},
-            {"title": "Bulk Post 3", "content": "Third bulk post"}
+            {"title": "Bulk Post 3", "content": "Third bulk post"},
         ]
         bulk_posts = await service.bulk_operation(bulk_data)
         print(f"Created {len(bulk_posts)} posts in bulk")
 
         # Example 4: Complex workflow
-        final_post = await service.complex_workflow("Workflow Post", "Complex workflow content")
+        final_post = await service.complex_workflow(
+            "Workflow Post", "Complex workflow content"
+        )
         print(f"Workflow result: {final_post.title}")
 
         print("\n=== Advanced Transaction Examples ===")
 
         # Example 5: Validation with rollback
         try:
-            await advanced_service.create_with_validation("Test", "This content is forbidden")
+            await advanced_service.create_with_validation(
+                "Test", "This content is forbidden"
+            )
         except Exception as e:
             print(f"Validation failed (rolled back): {e}")
 
         # Example 6: Successful validation
-        valid_post = await advanced_service.create_with_validation("Valid Long Title", "Valid content")
+        valid_post = await advanced_service.create_with_validation(
+            "Valid Long Title", "Valid content"
+        )
         if not valid_post:
             raise Exception("Valid post creation failed")
 
@@ -271,6 +296,7 @@ async def main():
 
     finally:
         await close_connections()
+
 
 if __name__ == "__main__":
     print("🚀 Starting Transaction Examples")

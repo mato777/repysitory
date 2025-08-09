@@ -99,9 +99,9 @@ class TestEdgeCasesAndValidation:
         # Try to delete existing and non-existing posts
         ids_to_delete = [
             existing_posts[0].id,  # Exists
-            uuid4(),               # Doesn't exist
+            uuid4(),  # Doesn't exist
             existing_posts[1].id,  # Exists
-            uuid4(),               # Doesn't exist
+            uuid4(),  # Doesn't exist
         ]
 
         deleted_count = await post_repo.delete_many(ids_to_delete)
@@ -155,12 +155,10 @@ class TestEdgeCasesAndValidation:
     @transactional("test")
     async def test_special_characters_in_content(self, post_repo):
         """Test handling of special characters in post content."""
-        special_content = "Content with 'quotes', \"double quotes\", and $pecial ch@rs! 🚀"
-        post = Post(
-            id=uuid4(),
-            title="Special Characters",
-            content=special_content
+        special_content = (
+            "Content with 'quotes', \"double quotes\", and $pecial ch@rs! 🚀"
         )
+        post = Post(id=uuid4(), title="Special Characters", content=special_content)
 
         await post_repo.create(post)
         found_post = await post_repo.find_by_id(post.id)
@@ -173,11 +171,7 @@ class TestEdgeCasesAndValidation:
     async def test_long_content(self, post_repo):
         """Test handling of very long content."""
         long_content = "A" * 10000  # 10KB of content
-        post = Post(
-            id=uuid4(),
-            title="Long Content Test",
-            content=long_content
-        )
+        post = Post(id=uuid4(), title="Long Content Test", content=long_content)
 
         await post_repo.create(post)
         found_post = await post_repo.find_by_id(post.id)

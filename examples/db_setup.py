@@ -1,14 +1,17 @@
 """
 Database setup utilities for examples
 """
-import asyncpg
+
 import sys
 from pathlib import Path
+
+import asyncpg
 
 # Add the parent directory to Python path so we can import from src
 sys.path.append(str(Path(__file__).parent.parent))
 
 from src.db_context import DatabaseManager
+
 
 async def setup_postgres_connection(
     host: str = "localhost",
@@ -16,7 +19,7 @@ async def setup_postgres_connection(
     database: str = "postgres",
     user: str = "root",
     password: str = "root",
-    pool_name: str = "default"
+    pool_name: str = "default",
 ):
     """
     Set up a connection pool to a local PostgreSQL instance.
@@ -40,7 +43,7 @@ async def setup_postgres_connection(
             user=user,
             password=password,
             min_size=1,
-            max_size=10
+            max_size=10,
         )
 
         # Add pool to DatabaseManager
@@ -54,6 +57,7 @@ async def setup_postgres_connection(
         print(f"Make sure PostgreSQL is running on {host}:{port}")
         print(f"And that database '{database}' exists with user '{user}'")
         raise
+
 
 async def setup_example_schema(pool_name: str = "default"):
     """
@@ -74,6 +78,7 @@ async def setup_example_schema(pool_name: str = "default"):
         print(f"❌ Failed to create schema: {e}")
         raise
 
+
 async def cleanup_example_data(pool_name: str = "default"):
     """
     Clean up example data (optional - for clean runs).
@@ -85,6 +90,7 @@ async def cleanup_example_data(pool_name: str = "default"):
         print("🧹 Cleaned up existing posts")
     except Exception as e:
         print(f"⚠️  Could not clean up data: {e}")
+
 
 async def close_connections():
     """

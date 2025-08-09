@@ -1,6 +1,7 @@
 """
 Example showing the benefits of enforced search parameters and typed updates in Repository definitions
 """
+
 import asyncio
 import sys
 from pathlib import Path
@@ -8,13 +9,18 @@ from pathlib import Path
 # Add the parent directory to Python path so we can import from src
 sys.path.append(str(Path(__file__).parent.parent))
 
-from pydantic import BaseModel
 from uuid import UUID, uuid4
-from typing import Optional
-from src.repository import Repository
+
+from pydantic import BaseModel
+
+from examples.db_setup import (
+    close_connections,
+    setup_postgres_connection,
+)
+from src.db_context import DatabaseManager, transactional
 from src.entities import BaseEntity
-from src.db_context import transactional, DatabaseManager
-from examples.db_setup import setup_postgres_connection, setup_example_schema, cleanup_example_data, close_connections
+from src.repository import Repository
+
 
 # Example 1: User entity with restricted searchable fields
 class User(BaseEntity):
@@ -24,22 +30,25 @@ class User(BaseEntity):
     full_name: str
     is_active: bool
 
+
 # Search model - deliberately excludes password_hash for security
 class UserSearch(BaseModel):
-    id: Optional[UUID] = None
-    email: Optional[str] = None
-    username: Optional[str] = None
-    full_name: Optional[str] = None
-    is_active: Optional[bool] = None
+    id: UUID | None = None
+    email: str | None = None
+    username: str | None = None
+    full_name: str | None = None
+    is_active: bool | None = None
     # Note: password_hash is NOT searchable - good for security!
+
 
 # Update model - controls what can be updated
 class UserUpdate(BaseModel):
-    email: Optional[str] = None
-    username: Optional[str] = None
-    full_name: Optional[str] = None
-    is_active: Optional[bool] = None
+    email: str | None = None
+    username: str | None = None
+    full_name: str | None = None
+    is_active: bool | None = None
     # Note: password_hash requires special method - not via general update!
+
 
 class UserRepository(Repository[User, UserSearch, UserUpdate]):
     def __init__(self):
@@ -57,8 +66,10 @@ class UserRepository(Repository[User, UserSearch, UserUpdate]):
         conn = self._get_connection()
         await conn.execute(
             "UPDATE users SET password_hash = $1 WHERE id = $2",
-            new_password_hash, str(user_id)
+            new_password_hash,
+            str(user_id),
         )
+
 
 # Example 2: Product entity with different search strategy
 class Product(BaseEntity):
@@ -67,22 +78,25 @@ class Product(BaseEntity):
     price: float
     category_id: UUID
     internal_cost: float  # Internal field
-    supplier_id: UUID     # Internal field
+    supplier_id: UUID  # Internal field
+
 
 # Search model - only allows searching by public fields
 class ProductSearch(BaseModel):
-    id: Optional[UUID] = None
-    name: Optional[str] = None
-    category_id: Optional[UUID] = None
+    id: UUID | None = None
+    name: str | None = None
+    category_id: UUID | None = None
     # Note: internal_cost and supplier_id are NOT searchable
+
 
 # Update model - controls what fields can be updated
 class ProductUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    price: Optional[float] = None
-    category_id: Optional[UUID] = None
+    name: str | None = None
+    description: str | None = None
+    price: float | None = None
+    category_id: UUID | None = None
     # Note: internal_cost and supplier_id require special admin methods
+
 
 class ProductRepository(Repository[Product, ProductSearch, ProductUpdate]):
     def __init__(self):
@@ -94,13 +108,18 @@ class ProductRepository(Repository[Product, ProductSearch, ProductUpdate]):
         return await self.find_many_by(search)
 
     @transactional("admin_db")
-    async def admin_update_costs(self, product_id: UUID, internal_cost: float, supplier_id: UUID):
+    async def admin_update_costs(
+        self, product_id: UUID, internal_cost: float, supplier_id: UUID
+    ):
         """Admin-only method for updating internal fields"""
         conn = self._get_connection()
         await conn.execute(
             "UPDATE products SET internal_cost = $1, supplier_id = $2 WHERE id = $3",
-            internal_cost, supplier_id, str(product_id)
+            internal_cost,
+            supplier_id,
+            str(product_id),
         )
+
 
 # Example usage showing type safety
 async def example_usage():
@@ -140,12 +159,13 @@ async def example_usage():
 
     except Exception as e:
         print(f"Failed to setup database: {e}")
-        print("\n💡 To run this example, make sure PostgreSQL is running on localhost:5432")
+        print(
+            "\n💡 To run this example, make sure PostgreSQL is running on localhost:5432"
+        )
         return
 
     try:
         user_repo = UserRepository()
-        product_repo = ProductRepository()
 
         print("\n=== Type Safety Examples ===")
 
@@ -159,7 +179,7 @@ async def example_usage():
                 username="testuser",
                 password_hash="hashed_password",
                 full_name="Test User",
-                is_active=True
+                is_active=True,
             )
             await user_repo.create(user)
 
@@ -170,7 +190,9 @@ async def example_usage():
             if users:
                 update_data = UserUpdate(full_name="Updated Name", is_active=False)
                 updated_user = await user_repo.update(users.id, update_data)
-                print(f"Updated user: {updated_user.full_name if updated_user else 'None'}")
+                print(
+                    f"Updated user: {updated_user.full_name if updated_user else 'None'}"
+                )
 
         await safe_operations()
 
@@ -182,11 +204,13 @@ async def example_usage():
     finally:
         await close_connections()
 
+
 async def main():
     """Run the enforced search examples"""
     print("🚀 Starting Enforced Search Examples")
     print("=" * 50)
     await example_usage()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

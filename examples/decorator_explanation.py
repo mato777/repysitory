@@ -1,6 +1,7 @@
 """
 Examples showing the @transactional decorator and automatic transaction context management
 """
+
 import asyncio
 import sys
 from pathlib import Path
@@ -9,12 +10,18 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from uuid import uuid4
-from src.entities import BaseEntity
-from src.db_context import DatabaseManager, transactional
-from src.repository import Repository
+
 from pydantic import BaseModel
-from typing import Optional
-from examples.db_setup import setup_postgres_connection, setup_example_schema, cleanup_example_data, close_connections
+
+from examples.db_setup import (
+    cleanup_example_data,
+    close_connections,
+    setup_example_schema,
+    setup_postgres_connection,
+)
+from src.db_context import DatabaseManager, transactional
+from src.entities import BaseEntity
+from src.repository import Repository
 
 
 # Example entities and models
@@ -22,14 +29,17 @@ class Post(BaseEntity):
     title: str
     content: str
 
+
 class PostSearch(BaseModel):
-    id: Optional[str] = None
-    title: Optional[str] = None
-    content: Optional[str] = None
+    id: str | None = None
+    title: str | None = None
+    content: str | None = None
+
 
 class PostUpdate(BaseModel):
-    title: Optional[str] = None
-    content: Optional[str] = None
+    title: str | None = None
+    content: str | None = None
+
 
 class PostRepository(Repository[Post, PostSearch, PostUpdate]):
     def __init__(self):
@@ -69,7 +79,9 @@ class PostService:
         """Manual transaction with automatic connection context"""
         async with DatabaseManager.transaction("default"):
             # Inside transaction - repository methods automatically use this connection
-            post1 = await self.post_repo.create(Post(id=uuid4(), title="TX Post", content="Content"))
+            post1 = await self.post_repo.create(
+                Post(id=uuid4(), title="TX Post", content="Content")
+            )
 
             # This also uses the same transaction connection automatically
             found_post = await self.post_repo.find_by_id(post1.id)
@@ -83,11 +95,13 @@ class PostService:
     @transactional("default")
     async def nested_transaction_example(self):
         """Outer transaction"""
-        post1 = await self.post_repo.create(Post(id=uuid4(), title="Outer", content="Content"))
+        await self.post_repo.create(Post(id=uuid4(), title="Outer", content="Content"))
 
         # Inner transaction (nested)
         async with DatabaseManager.transaction("default"):
-            post2 = await self.post_repo.create(Post(id=uuid4(), title="Inner", content="Content"))
+            await self.post_repo.create(
+                Post(id=uuid4(), title="Inner", content="Content")
+            )
 
             # Both posts are in the same transaction context
             posts = await self.post_repo.find_many_by()
@@ -98,7 +112,9 @@ class PostService:
     async def rollback_example(self):
         """Demonstrates automatic rollback on error"""
         try:
-            post1 = await self.post_repo.create(Post(id=uuid4(), title="Will Rollback", content="Content"))
+            post1 = await self.post_repo.create(
+                Post(id=uuid4(), title="Will Rollback", content="Content")
+            )
 
             # This will succeed
             update_data = PostUpdate(title="Updated Title")
@@ -111,6 +127,7 @@ class PostService:
             # The entire transaction is rolled back
             # post1 creation and update are both undone
             pass
+
 
 async def main():
     """Run decorator explanation examples"""
@@ -126,7 +143,9 @@ async def main():
         print(f"Failed to setup database: {e}")
         print("\n💡 To run this example, make sure you have:")
         print("1. PostgreSQL running on localhost:5432")
-        print("2. A 'postgres' database accessible with user 'postgres' and password 'postgres'")
+        print(
+            "2. A 'postgres' database accessible with user 'postgres' and password 'postgres'"
+        )
         return
 
     try:
@@ -156,6 +175,7 @@ async def main():
 
     finally:
         await close_connections()
+
 
 if __name__ == "__main__":
     print("🚀 Starting Decorator Examples")

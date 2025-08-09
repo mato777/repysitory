@@ -1,5 +1,5 @@
 import pytest
-import pytest_asyncio
+
 from src.db_context import DatabaseManager
 
 

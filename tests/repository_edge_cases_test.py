@@ -1,5 +1,7 @@
-import pytest
 from uuid import uuid4
+
+import pytest
+
 from tests.post_entities import Post, PostSearch, PostUpdate
 from tests.post_repository import PostRepository
 
@@ -16,7 +18,10 @@ class TestRepositoryEdgeCases:
     async def test_repository_method_without_transaction_context(self, post_repo):
         """Test that repository methods raise ValueError when called outside transaction context"""
         # This tests line 43 in repository.py - _get_connection() when no transaction is active
-        with pytest.raises(ValueError, match="No active transaction found. Repository methods must be called within a transaction context."):
+        with pytest.raises(
+            ValueError,
+            match="No active transaction found. Repository methods must be called within a transaction context.",
+        ):
             await post_repo.find_by_id(uuid4())
 
     @pytest.mark.asyncio

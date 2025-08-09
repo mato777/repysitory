@@ -1,6 +1,8 @@
-import pytest
 from uuid import uuid4
-from src.db_context import transactional, DatabaseManager
+
+import pytest
+
+from src.db_context import DatabaseManager, transactional
 from src.entities import SortOrder
 from tests.post_entities import Post, PostSearch, PostSort, PostUpdate
 from tests.post_repository import PostRepository
@@ -21,7 +23,11 @@ class TestPostRepositoryOperations:
             Post(id=uuid4(), title="First Post", content="This is the first post"),
             Post(id=uuid4(), title="Second Post", content="This is the second post"),
             Post(id=uuid4(), title="Third Post", content="This is the third post"),
-            Post(id=uuid4(), title="Alpha Post", content="This comes first alphabetically"),
+            Post(
+                id=uuid4(),
+                title="Alpha Post",
+                content="This comes first alphabetically",
+            ),
         ]
 
     @pytest.mark.asyncio
@@ -60,7 +66,7 @@ class TestPostRepositoryOperations:
         assert len(created_posts) == len(sample_posts)
 
         # Verify all posts were created
-        for original, created in zip(sample_posts, created_posts):
+        for original, created in zip(sample_posts, created_posts, strict=False):
             assert created.id == original.id
             assert created.title == original.title
             assert created.content == original.content

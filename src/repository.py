@@ -1,26 +1,35 @@
-import asyncpg
-from typing import Generic, TypeVar, List, Optional, Dict, Any, Type
+from typing import TypeVar
 from uuid import UUID
+
+import asyncpg
 from pydantic import BaseModel
+
 from src.db_context import DatabaseManager
 
-T = TypeVar('T', bound=BaseModel)  # Entity type
-S = TypeVar('S', bound=BaseModel)  # Search model type
-U = TypeVar('U', bound=BaseModel)  # Update model type
+T = TypeVar("T", bound=BaseModel)  # Entity type
+S = TypeVar("S", bound=BaseModel)  # Search model type
+U = TypeVar("U", bound=BaseModel)  # Update model type
 
-class Repository(Generic[T, S, U]):  # Now requires entity, search, and update types
-    entity_class: Type[T]
-    search_class: Type[S]
-    update_class: Type[U]
+
+class Repository[T, S, U]:
+    entity_class: type[T]
+    search_class: type[S]
+    update_class: type[U]
     table_name: str
 
-    def __init__(self, entity_class: Type[T], search_class: Type[S], update_class: Type[U], table_name: str):
+    def __init__(
+        self,
+        entity_class: type[T],
+        search_class: type[S],
+        update_class: type[U],
+        table_name: str,
+    ):
         self.entity_class = entity_class
         self.search_class = search_class
         self.update_class = update_class
         self.table_name = table_name
 
-    def _build_order_clause(self, sort_model: Optional[BaseModel]) -> str:
+    def _build_order_clause(self, sort_model: BaseModel | None) -> str:
         """Build ORDER BY clause from sort model"""
         if not sort_model:
             return ""
@@ -39,20 +48,23 @@ class Repository(Generic[T, S, U]):  # Now requires entity, search, and update t
         """Get the current database connection from context"""
         conn = DatabaseManager.get_current_connection()
         if not conn:
-            raise ValueError("No active transaction found. Repository methods must be called within a transaction context.")
+            raise ValueError(
+                "No active transaction found. Repository methods must be called within a transaction context."
+            )
         return conn
 
-    async def find_by_id(self, id: UUID) -> Optional[T]:
+    async def find_by_id(self, entity_id: UUID) -> T | None:
         conn = self._get_connection()
-        row = await conn.fetchrow(f"SELECT * FROM {self.table_name} WHERE id = $1", str(id))
+        row = await conn.fetchrow(
+            f"SELECT * FROM {self.table_name} WHERE id = $1", str(entity_id)
+        )
         if row:
             return self.entity_class(**dict(row))
         return None
 
-    async def find_one_by(self, search: S) -> Optional[T]:
+    async def find_one_by(self, search: S) -> T | None:
         conn = self._get_connection()
 
-        # Convert search model to dict and filter out None values
         search_dict = {k: v for k, v in search.model_dump().items() if v is not None}
 
         if not search_dict:
@@ -60,21 +72,26 @@ class Repository(Generic[T, S, U]):  # Now requires entity, search, and update t
 
         keys = list(search_dict.keys())
         values = list(search_dict.values())
-        where_clause = ' AND '.join([f"{k} = ${i+1}" for i, k in enumerate(keys)])
-        row = await conn.fetchrow(f"SELECT * FROM {self.table_name} WHERE {where_clause}", *values)
+        where_clause = " AND ".join([f"{k} = ${i + 1}" for i, k in enumerate(keys)])
+        row = await conn.fetchrow(
+            f"SELECT * FROM {self.table_name} WHERE {where_clause}", *values
+        )
         if row:
             return self.entity_class(**dict(row))
         return None
 
-    async def find_many_by(self, search: Optional[S] = None, sort: Optional[BaseModel] = None) -> List[T]:
+    async def find_many_by(
+        self, search: S | None = None, sort: BaseModel | None = None
+    ) -> list[T]:
         conn = self._get_connection()
 
         if not search:
             query = f"SELECT * FROM {self.table_name}"
             values = []
         else:
-            # Convert search model to dict and filter out None values
-            search_dict = {k: v for k, v in search.model_dump().items() if v is not None}
+            search_dict = {
+                k: v for k, v in search.model_dump().items() if v is not None
+            }
 
             if not search_dict:
                 query = f"SELECT * FROM {self.table_name}"
@@ -82,7 +99,9 @@ class Repository(Generic[T, S, U]):  # Now requires entity, search, and update t
             else:
                 keys = list(search_dict.keys())
                 values = list(search_dict.values())
-                where_clause = ' AND '.join([f"{k} = ${i+1}" for i, k in enumerate(keys)])
+                where_clause = " AND ".join(
+                    [f"{k} = ${i + 1}" for i, k in enumerate(keys)]
+                )
                 query = f"SELECT * FROM {self.table_name} WHERE {where_clause}"
 
         # Add ORDER BY clause
@@ -96,26 +115,24 @@ class Repository(Generic[T, S, U]):  # Now requires entity, search, and update t
         conn = self._get_connection()
 
         fields = entity.model_dump()
-        columns = ', '.join(fields.keys())
+        columns = ", ".join(fields.keys())
         values = list(fields.values())
-        placeholders = ', '.join([f"${i+1}" for i in range(len(values))])
+        placeholders = ", ".join([f"${i + 1}" for i in range(len(values))])
 
         await conn.execute(
             f"INSERT INTO {self.table_name} ({columns}) VALUES ({placeholders})",
-            *values
+            *values,
         )
         return entity
 
-    async def create_many(self, entities: List[T]) -> List[T]:
+    async def create_many(self, entities: list[T]) -> list[T]:
         conn = self._get_connection()
         if not entities:
             return []
 
         fields = entities[0].model_dump().keys()
-        columns = ', '.join(fields)
+        columns = ", ".join(fields)
 
-        # Create placeholders for multiple rows
-        # Each row needs placeholders like ($1, $2, $3), ($4, $5, $6), etc.
         field_count = len(fields)
         rows_placeholders = []
         all_values = []
@@ -124,65 +141,66 @@ class Repository(Generic[T, S, U]):  # Now requires entity, search, and update t
             entity_values = list(entity.model_dump().values())
             all_values.extend(entity_values)
 
-            # Create placeholders for this row: ($1, $2, $3) for first row, ($4, $5, $6) for second, etc.
-            row_placeholders = ', '.join([f"${j + i * field_count + 1}" for j in range(field_count)])
+            row_placeholders = ", ".join(
+                [f"${j + i * field_count + 1}" for j in range(field_count)]
+            )
             rows_placeholders.append(f"({row_placeholders})")
 
-        # Join all row placeholders: ($1, $2, $3), ($4, $5, $6), ...
-        values_clause = ', '.join(rows_placeholders)
+        values_clause = ", ".join(rows_placeholders)
 
         await conn.execute(
             f"INSERT INTO {self.table_name} ({columns}) VALUES {values_clause}",
-            *all_values
+            *all_values,
         )
         return entities
 
-    async def update(self, id: UUID, update_data: U) -> Optional[T]:
+    async def update(self, entity_id: UUID, update_data: U) -> T | None:
         conn = self._get_connection()
 
-        # Convert update model to dict and filter out None values
-        update_dict = {k: v for k, v in update_data.model_dump().items() if v is not None}
+        update_dict = {
+            k: v for k, v in update_data.model_dump().items() if v is not None
+        }
 
         if not update_dict:
-            return await self.find_by_id(id)
+            return await self.find_by_id(entity_id)
 
-        set_clause = ', '.join([f"{k} = ${i+2}" for i, k in enumerate(update_dict.keys())])
+        set_clause = ", ".join(
+            [f"{k} = ${i + 2}" for i, k in enumerate(update_dict.keys())]
+        )
         values = list(update_dict.values())
-        values.insert(0, str(id))
+        values.insert(0, str(entity_id))
 
         await conn.execute(
-            f"UPDATE {self.table_name} SET {set_clause} WHERE id = $1",
-            *values
+            f"UPDATE {self.table_name} SET {set_clause} WHERE id = $1", *values
         )
-        row = await conn.fetchrow(f"SELECT * FROM {self.table_name} WHERE id = $1", str(id))
+        row = await conn.fetchrow(
+            f"SELECT * FROM {self.table_name} WHERE id = $1", str(entity_id)
+        )
         if row:
             return self.entity_class(**dict(row))
         return None
 
-    async def delete(self, id: UUID) -> bool:
+    async def delete(self, entity_id: UUID) -> bool:
         conn = self._get_connection()
 
-        result = await conn.execute(f"DELETE FROM {self.table_name} WHERE id = $1", str(id))
+        result = await conn.execute(
+            f"DELETE FROM {self.table_name} WHERE id = $1", str(entity_id)
+        )
         return result != "DELETE 0"
 
-    async def delete_many(self, ids: List[UUID]) -> int:
+    async def delete_many(self, ids: list[UUID]) -> int:
         """Delete multiple entities by their IDs. Returns the number of deleted records."""
         conn = self._get_connection()
         if not ids:
             return 0
 
-        # Convert UUIDs to strings for the query
-        str_ids = [str(id) for id in ids]
+        str_ids = [str(entity_id) for entity_id in ids]
 
-        # Create placeholders for the IN clause: $1, $2, $3, ...
-        placeholders = ', '.join([f"${i+1}" for i in range(len(str_ids))])
+        placeholders = ", ".join([f"${i + 1}" for i in range(len(str_ids))])
 
         result = await conn.execute(
-            f"DELETE FROM {self.table_name} WHERE id IN ({placeholders})",
-            *str_ids
+            f"DELETE FROM {self.table_name} WHERE id IN ({placeholders})", *str_ids
         )
 
-        # Extract the number of deleted rows from the result
-        # Result format is "DELETE n" where n is the number of deleted rows
         deleted_count = int(result.split()[-1]) if result != "DELETE 0" else 0
         return deleted_count

@@ -8,11 +8,97 @@ dependencies = [
     "pydantic>=2.11.7",
 ]
 
+[project.scripts]
+# Custom commands that can be run with `uv run <command>`
+lint = "ruff check src/ tests/ examples/"
+lint-fix = "ruff check --fix src/ tests/ examples/"
+format = "ruff format src/ tests/ examples/"
+format-check = "ruff format --check src/ tests/ examples/"
+
 [dependency-groups]
 dev = [
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
-    "pytest-cov>=6.2.1",
     "pytest-sugar>=1.0.0",
     "testcontainers[postgres]>=4.12.0",
+    "ruff>=0.8.0",
+    "pre-commit>=3.6.0",
+    "pytest-cov>=6.2.1",
 ]
+
+# Ruff configuration
+[tool.ruff]
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    "htmlcov",
+]
+
+# Same as Black.
+line-length = 88
+indent-width = 4
+
+# Assume Python 3.13
+target-version = "py313"
+
+[tool.ruff.lint]
+# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
+select = [
+    "E4",   # pycodestyle errors
+    "E7",
+    "E9",
+    "F",    # Pyflakes
+    "W",    # pycodestyle warnings
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "T20",  # flake8-print
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",  # Line too long (handled by formatter)
+    "B008",  # Do not perform function calls in argument defaults
+    "T201",  # Print found (we use print in examples)
+]
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.format]
+# Like Black, use double quotes for strings.
+quote-style = "double"
+
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"

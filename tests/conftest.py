@@ -45,5 +45,3 @@ async def test_db_pool(postgres_container):
 
     # Cleanup: close the pool after each test
     await pool.close()
-
-

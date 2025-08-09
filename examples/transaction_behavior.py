@@ -1,6 +1,7 @@
 """
 Examples demonstrating transaction behavior with the new repository architecture
 """
+
 import asyncio
 import sys
 from pathlib import Path
@@ -9,29 +10,40 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from uuid import uuid4
+
+from pydantic import BaseModel
+
+from examples.db_setup import (
+    cleanup_example_data,
+    close_connections,
+    setup_example_schema,
+    setup_postgres_connection,
+)
+from src.db_context import DatabaseManager, transactional
 from src.entities import BaseEntity
 from src.repository import Repository
-from src.db_context import transactional, DatabaseManager
-from pydantic import BaseModel
-from typing import Optional
-from examples.db_setup import setup_postgres_connection, setup_example_schema, cleanup_example_data, close_connections
+
 
 # Example entities and models
 class Post(BaseEntity):
-    title: str
-    content: str
+    title: str = "Untitled Post"
+    content: str = "No content provided"
+
 
 class PostSearch(BaseModel):
-    title: Optional[str] = None
-    content: Optional[str] = None
+    title: str | None = None
+    content: str | None = None
+
 
 class PostUpdate(BaseModel):
-    title: Optional[str] = None
-    content: Optional[str] = None
+    title: str | None = None
+    content: str | None = None
+
 
 class PostRepository(Repository[Post, PostSearch, PostUpdate]):
     def __init__(self):
         super().__init__(Post, PostSearch, PostUpdate, "posts")
+
 
 # Example 1: Automatic Rollback on Exception
 @transactional("default")
@@ -46,7 +58,9 @@ async def transaction_rollback_example():
         print(f"Created post: {post1.title}")
 
         # Create second post
-        post2 = Post(id=uuid4(), title="Second Post", content="This will also be rolled back")
+        post2 = Post(
+            id=uuid4(), title="Second Post", content="This will also be rolled back"
+        )
         await post_repo.create(post2)
         print(f"Created post: {post2.title}")
 
@@ -66,6 +80,7 @@ async def transaction_rollback_example():
         remaining_posts = await post_repo.find_many_by()
         print(f"Posts after rollback: {len(remaining_posts)}")
 
+
 # Example 2: Successful Transaction Commit
 @transactional("default")
 async def transaction_commit_example():
@@ -74,7 +89,9 @@ async def transaction_commit_example():
 
     # Create posts within transaction
     post1 = Post(id=uuid4(), title="Committed Post 1", content="This will be saved")
-    post2 = Post(id=uuid4(), title="Committed Post 2", content="This will also be saved")
+    post2 = Post(
+        id=uuid4(), title="Committed Post 2", content="This will also be saved"
+    )
 
     await post_repo.create(post1)
     await post_repo.create(post2)
@@ -93,6 +110,7 @@ async def transaction_commit_example():
         updated_post = await post_repo.find_by_id(post1.id)
         print(f"Updated post title: {updated_post.title}")
 
+
 # Example 3: Nested Transactions
 @transactional("default")
 async def nested_transaction_example():
@@ -107,7 +125,9 @@ async def nested_transaction_example():
     try:
         # Inner transaction (nested)
         async with DatabaseManager.transaction("default"):
-            post2 = Post(id=uuid4(), title="Inner Transaction Post", content="Created in inner")
+            post2 = Post(
+                id=uuid4(), title="Inner Transaction Post", content="Created in inner"
+            )
             await post_repo.create(post2)
             print("Created post in inner transaction")
 
@@ -128,6 +148,7 @@ async def nested_transaction_example():
     # Outer transaction can still commit successfully
     print("Outer transaction continues...")
 
+
 # Example 4: Multiple Database Transactions
 async def multi_database_example():
     """Example using multiple databases"""
@@ -135,14 +156,20 @@ async def multi_database_example():
     @transactional("user_db")
     async def create_user_data():
         post_repo = PostRepository()
-        user_post = Post(id=uuid4(), title="User DB Post", content="Stored in user database")
+        user_post = Post(
+            id=uuid4(), title="User DB Post", content="Stored in user database"
+        )
         await post_repo.create(user_post)
         return user_post
 
     @transactional("analytics_db")
     async def create_analytics_data():
         post_repo = PostRepository()
-        analytics_post = Post(id=uuid4(), title="Analytics DB Post", content="Stored in analytics database")
+        analytics_post = Post(
+            id=uuid4(),
+            title="Analytics DB Post",
+            content="Stored in analytics database",
+        )
         await post_repo.create(analytics_post)
         return analytics_post
 
@@ -152,6 +179,7 @@ async def multi_database_example():
 
     print(f"Created user post: {user_post.title}")
     print(f"Created analytics post: {analytics_post.title}")
+
 
 # Example 5: Manual Transaction Management
 async def manual_transaction_example():
@@ -177,6 +205,7 @@ async def manual_transaction_example():
 
     # Transaction commits when exiting the context manager
     print("Manual transaction committed")
+
 
 # Example 6: Transaction with Business Logic
 class PostService:
@@ -219,13 +248,20 @@ class PostService:
 
         return results
 
+
 async def business_logic_transaction_example():
     """Example using business logic with transactions"""
     service = PostService()
 
+    post1 = Post()
     try:
         # This will succeed
-        post1 = await service.create_post_with_validation("Valid Title", "Valid content")
+        post1 = await service.create_post_with_validation(
+            "Valid Title", "Valid content"
+        )
+        if not post1:
+            raise Exception("Post creation failed")
+
         print(f"Created valid post: {post1.title}")
 
         # This will fail and rollback
@@ -235,13 +271,18 @@ async def business_logic_transaction_example():
         print(f"Validation failed: {e}")
 
     # Bulk update example
-    post_ids = [post1.id]  # Use the successfully created post
+    if not post1:
+        raise Exception("No valid post to update")
     updates = {
-        str(post1.id): {"title": "Bulk Updated Title", "content": "Bulk updated content"}
+        str(post1.id): {
+            "title": "Bulk Updated Title",
+            "content": "Bulk updated content",
+        }
     }
 
     updated_posts = await service.bulk_update_posts(updates)
     print(f"Bulk updated {len(updated_posts)} posts")
+
 
 async def main():
     """Run all transaction behavior examples"""
@@ -257,7 +298,9 @@ async def main():
         print(f"Failed to setup database: {e}")
         print("\n💡 To run this example, make sure you have:")
         print("1. PostgreSQL running on localhost:5432")
-        print("2. A 'postgres' database accessible with user 'postgres' and password 'postgres'")
+        print(
+            "2. A 'postgres' database accessible with user 'postgres' and password 'postgres'"
+        )
         return
 
     try:
@@ -286,6 +329,7 @@ async def main():
 
     finally:
         await close_connections()
+
 
 if __name__ == "__main__":
     print("🚀 Starting Transaction Behavior Examples")

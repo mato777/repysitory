@@ -1,6 +1,7 @@
 """
 Example showing how to use the sorting functionality with the repository
 """
+
 import asyncio
 import sys
 from pathlib import Path
@@ -9,33 +10,44 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from uuid import uuid4
+
+from pydantic import BaseModel, ConfigDict
+
+from examples.db_setup import (
+    cleanup_example_data,
+    close_connections,
+    setup_example_schema,
+    setup_postgres_connection,
+)
+from src.db_context import DatabaseManager, transactional
 from src.entities import BaseEntity, SortOrder
 from src.repository import Repository
-from src.db_context import transactional, DatabaseManager
-from pydantic import BaseModel, ConfigDict
-from typing import Optional
-from examples.db_setup import setup_postgres_connection, setup_example_schema, cleanup_example_data, close_connections
+
 
 # Example entities and models
 class Post(BaseEntity):
     title: str
     content: str
 
+
 class PostSearch(BaseModel):
-    id: Optional[str] = None
-    title: Optional[str] = None
-    content: Optional[str] = None
+    id: str | None = None
+    title: str | None = None
+    content: str | None = None
+
 
 class PostUpdate(BaseModel):
-    title: Optional[str] = None
-    content: Optional[str] = None
+    title: str | None = None
+    content: str | None = None
+
 
 class PostSort(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
 
-    title: Optional[SortOrder] = None
-    content: Optional[SortOrder] = None
-    id: Optional[SortOrder] = None
+    title: SortOrder | None = None
+    content: SortOrder | None = None
+    id: SortOrder | None = None
+
 
 class PostRepository(Repository[Post, PostSearch, PostUpdate]):
     def __init__(self):
@@ -50,6 +62,7 @@ class PostRepository(Repository[Post, PostSearch, PostUpdate]):
         sort = PostSort(id=SortOrder.DESC)
         return await self.find_many_by(sort=sort)
 
+
 @transactional("default")
 async def sorting_examples():
     """Examples of different sorting patterns"""
@@ -60,21 +73,19 @@ async def sorting_examples():
 
     # Sort by title ascending (default)
     sort = PostSort(title=SortOrder.ASC)
-    posts = await post_repo.find_many_by(sort=sort)
+    await post_repo.find_many_by(sort=sort)
 
     # Sort by title descending
     sort = PostSort(title=SortOrder.DESC)
-    posts = await post_repo.find_many_by(sort=sort)
-
+    await post_repo.find_many_by(sort=sort)
 
     # Example 2: Multi-field sorting
     print("=== Multi-Field Sorting ===")
 
     # Sort by title ASC, then by content DESC
     sort = PostSort(title=SortOrder.ASC, content=SortOrder.DESC)
-    posts = await post_repo.find_many_by(sort=sort)
+    await post_repo.find_many_by(sort=sort)
     # SQL: ORDER BY title ASC, content DESC
-
 
     # Example 3: Combining search with sorting
     print("=== Search + Sort ===")
@@ -82,19 +93,17 @@ async def sorting_examples():
     # Find posts with specific content, sorted by title
     search = PostSearch(content="tutorial")
     sort = PostSort(title=SortOrder.ASC)
-    posts = await post_repo.find_many_by(search=search, sort=sort)
+    await post_repo.find_many_by(search=search, sort=sort)
     # SQL: WHERE content = 'tutorial' ORDER BY title ASC
-
 
     # Example 4: Using convenience methods
     print("=== Convenience Methods ===")
 
     # Get all posts sorted by title
-    posts = await post_repo.find_all_sorted_by_title()
+    await post_repo.find_all_sorted_by_title()
 
     # Get latest posts (by ID descending)
-    latest_posts = await post_repo.find_latest_posts()
-
+    await post_repo.find_latest_posts()
 
     # Example 5: Type-safe field validation
     print("=== Type Safety ===")
@@ -105,16 +114,15 @@ async def sorting_examples():
     # ❌ This would cause IDE error - invalid field
     # sort = PostSort(invalid_field=SortOrder.ASC)  # Type error!
 
-
     # Example 6: Optional sorting (no sorting applied)
     print("=== Optional Sorting ===")
 
     # Get all posts without any sorting
-    all_posts = await post_repo.find_many_by()
+    await post_repo.find_many_by()
 
     # Search without sorting
     search = PostSearch(title="Hello")
-    posts = await post_repo.find_many_by(search=search)
+    await post_repo.find_many_by(search=search)
 
 
 @transactional("default")
@@ -156,9 +164,9 @@ async def advanced_sorting_examples():
         return posts
 
     # Run examples
-    featured = await get_featured_posts()
-    newest = await get_posts_by_preference("newest")
-    search_results = await search_posts_with_fallback("tutorial")
+    await get_featured_posts()
+    await get_posts_by_preference("newest")
+    await search_posts_with_fallback("tutorial")
 
 
 # Example of multiple database sorting
@@ -181,18 +189,23 @@ async def manual_transaction_sorting():
 
     async with DatabaseManager.transaction("default"):
         # Create some test posts
-        post1 = await post_repo.create(Post(id=uuid4(), title="Zebra Post", content="Last alphabetically"))
-        post2 = await post_repo.create(Post(id=uuid4(), title="Alpha Post", content="First alphabetically"))
+        post1 = await post_repo.create(
+            Post(id=uuid4(), title="Zebra Post", content="Last alphabetically")
+        )
+        post2 = await post_repo.create(
+            Post(id=uuid4(), title="Alpha Post", content="First alphabetically")
+        )
 
         # Sort and verify order
         sort = PostSort(title=SortOrder.ASC)
         sorted_posts = await post_repo.find_many_by(sort=sort)
 
-        assert sorted_posts[0].title == "Alpha Post"
-        assert sorted_posts[-1].title == "Zebra Post"  # Assuming only these two posts
+        assert sorted_posts[0].title == post1.title
+        assert sorted_posts[-1].title == post2.title  # Assuming only these two posts
 
 
 if __name__ == "__main__":
+
     async def main():
         """Run all sorting examples"""
 
@@ -207,7 +220,9 @@ if __name__ == "__main__":
             print(f"Failed to setup database: {e}")
             print("\n💡 To run this example, make sure you have:")
             print("1. PostgreSQL running on localhost:5432")
-            print("2. A 'postgres' database accessible with user 'postgres' and password 'postgres'")
+            print(
+                "2. A 'postgres' database accessible with user 'postgres' and password 'postgres'"
+            )
             return
 
         try:
