@@ -2,12 +2,19 @@
 Examples demonstrating transaction behavior with the new repository architecture
 """
 import asyncio
+import sys
+from pathlib import Path
+
+# Add the parent directory to Python path so we can import from src
+sys.path.append(str(Path(__file__).parent.parent))
+
 from uuid import uuid4
 from src.entities import BaseEntity
 from src.repository import Repository
 from src.db_context import transactional, DatabaseManager
 from pydantic import BaseModel
 from typing import Optional
+from examples.db_setup import setup_postgres_connection, setup_example_schema, cleanup_example_data, close_connections
 
 # Example entities and models
 class Post(BaseEntity):
@@ -238,25 +245,51 @@ async def business_logic_transaction_example():
 
 async def main():
     """Run all transaction behavior examples"""
-    print("=== Transaction Rollback Example ===")
-    await transaction_rollback_example()
 
-    print("\n=== Transaction Commit Example ===")
-    await transaction_commit_example()
+    # Setup database connection
+    print("🔧 Setting up database connection...")
+    try:
+        await setup_postgres_connection()
+        await setup_example_schema()
+        await cleanup_example_data()
 
-    print("\n=== Nested Transaction Example ===")
-    await nested_transaction_example()
+    except Exception as e:
+        print(f"Failed to setup database: {e}")
+        print("\n💡 To run this example, make sure you have:")
+        print("1. PostgreSQL running on localhost:5432")
+        print("2. A 'postgres' database accessible with user 'postgres' and password 'postgres'")
+        return
 
-    print("\n=== Multi Database Example ===")
-    await multi_database_example()
+    try:
+        print("=== Transaction Rollback Example ===")
+        await transaction_rollback_example()
 
-    print("\n=== Manual Transaction Example ===")
-    await manual_transaction_example()
+        print("\n=== Transaction Commit Example ===")
+        await transaction_commit_example()
 
-    print("\n=== Business Logic Transaction Example ===")
-    await business_logic_transaction_example()
+        print("\n=== Nested Transaction Example ===")
+        await nested_transaction_example()
+
+        print("\n=== Multi Database Example ===")
+        await multi_database_example()
+
+        print("\n=== Manual Transaction Example ===")
+        await manual_transaction_example()
+
+        print("\n=== Business Logic Transaction Example ===")
+        await business_logic_transaction_example()
+
+        print("\n✅ All transaction behavior examples completed successfully!")
+
+    except Exception as e:
+        print(f"❌ Example failed: {e}")
+
+    finally:
+        await close_connections()
 
 if __name__ == "__main__":
+    print("🚀 Starting Transaction Behavior Examples")
+    print("=" * 50)
     asyncio.run(main())
 
 # Key transaction behaviors demonstrated:

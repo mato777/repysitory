@@ -1,12 +1,20 @@
 """
 Example showing the benefits of enforced search parameters and typed updates in Repository definitions
 """
+import asyncio
+import sys
+from pathlib import Path
+
+# Add the parent directory to Python path so we can import from src
+sys.path.append(str(Path(__file__).parent.parent))
+
 from pydantic import BaseModel
 from uuid import UUID, uuid4
 from typing import Optional
 from src.repository import Repository
 from src.entities import BaseEntity
-from src.db_context import transactional
+from src.db_context import transactional, DatabaseManager
+from examples.db_setup import setup_postgres_connection, setup_example_schema, cleanup_example_data, close_connections
 
 # Example 1: User entity with restricted searchable fields
 class User(BaseEntity):
@@ -96,25 +104,92 @@ class ProductRepository(Repository[Product, ProductSearch, ProductUpdate]):
 
 # Example usage showing type safety
 async def example_usage():
-    user_repo = UserRepository()
-    product_repo = ProductRepository()
+    """Demonstrate type-safe repository operations"""
 
-    # Type-safe search - IDE will autocomplete and validate
-    @transactional("default")
-    async def safe_operations():
-        # ✅ This works - email is in UserSearch
-        users = await user_repo.find_one_by(UserSearch(email="test@example.com"))
+    # Setup database first
+    print("🔧 Setting up database connection...")
+    try:
+        await setup_postgres_connection()
 
-        # ❌ This would be a compile error - password_hash not in UserSearch
-        # users = await user_repo.find_one_by(UserSearch(password_hash="secret"))
+        # Create additional tables for this example
+        pool = await DatabaseManager.get_pool("default")
+        async with pool.acquire() as conn:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id UUID PRIMARY KEY,
+                    email VARCHAR(255) NOT NULL,
+                    username VARCHAR(255) NOT NULL,
+                    password_hash VARCHAR(255) NOT NULL,
+                    full_name VARCHAR(255) NOT NULL,
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE
+                );
+            """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS products (
+                    id UUID PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    description TEXT NOT NULL,
+                    price DECIMAL(10,2) NOT NULL,
+                    category_id UUID NOT NULL,
+                    internal_cost DECIMAL(10,2) NOT NULL,
+                    supplier_id UUID NOT NULL
+                );
+            """)
 
-        # ✅ Type-safe updates
-        if users:
-            update_data = UserUpdate(full_name="Updated Name", is_active=False)
-            await user_repo.update(users.id, update_data)
+        print("✅ Database schema ready")
 
-            # ❌ This would be a compile error - password_hash not in UserUpdate
-            # await user_repo.update(users.id, UserUpdate(password_hash="new_hash"))
+    except Exception as e:
+        print(f"Failed to setup database: {e}")
+        print("\n💡 To run this example, make sure PostgreSQL is running on localhost:5432")
+        return
+
+    try:
+        user_repo = UserRepository()
+        product_repo = ProductRepository()
+
+        print("\n=== Type Safety Examples ===")
+
+        # Type-safe search - IDE will autocomplete and validate
+        @transactional("default")
+        async def safe_operations():
+            # ✅ This works - email is in UserSearch
+            user = User(
+                id=uuid4(),
+                email="test@example.com",
+                username="testuser",
+                password_hash="hashed_password",
+                full_name="Test User",
+                is_active=True
+            )
+            await user_repo.create(user)
+
+            users = await user_repo.find_one_by(UserSearch(email="test@example.com"))
+            print(f"Found user: {users.full_name if users else 'None'}")
+
+            # ✅ Type-safe updates
+            if users:
+                update_data = UserUpdate(full_name="Updated Name", is_active=False)
+                updated_user = await user_repo.update(users.id, update_data)
+                print(f"Updated user: {updated_user.full_name if updated_user else 'None'}")
+
+        await safe_operations()
+
+        print("\n✅ All type safety examples completed successfully!")
+
+    except Exception as e:
+        print(f"❌ Example failed: {e}")
+
+    finally:
+        await close_connections()
+
+async def main():
+    """Run the enforced search examples"""
+    print("🚀 Starting Enforced Search Examples")
+    print("=" * 50)
+    await example_usage()
+
+if __name__ == "__main__":
+    asyncio.run(main())
 
 # Benefits of this approach:
 # 1. Security: Sensitive fields can't be accidentally searched or updated

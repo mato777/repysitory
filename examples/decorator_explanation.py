@@ -1,12 +1,20 @@
 """
 Examples showing the @transactional decorator and automatic transaction context management
 """
+import asyncio
+import sys
+from pathlib import Path
+
+# Add the parent directory to Python path so we can import from src
+sys.path.append(str(Path(__file__).parent.parent))
+
 from uuid import uuid4
 from src.entities import BaseEntity
 from src.db_context import DatabaseManager, transactional
 from src.repository import Repository
 from pydantic import BaseModel
 from typing import Optional
+from examples.db_setup import setup_postgres_connection, setup_example_schema, cleanup_example_data, close_connections
 
 
 # Example entities and models
@@ -103,6 +111,56 @@ class PostService:
             # The entire transaction is rolled back
             # post1 creation and update are both undone
             pass
+
+async def main():
+    """Run decorator explanation examples"""
+
+    # Setup database connection
+    print("🔧 Setting up database connection...")
+    try:
+        await setup_postgres_connection()
+        await setup_example_schema()
+        await cleanup_example_data()
+
+    except Exception as e:
+        print(f"Failed to setup database: {e}")
+        print("\n💡 To run this example, make sure you have:")
+        print("1. PostgreSQL running on localhost:5432")
+        print("2. A 'postgres' database accessible with user 'postgres' and password 'postgres'")
+        return
+
+    try:
+        service = PostService()
+
+        print("\n=== Decorator Examples ===")
+
+        # Example 1: Simple transactional method
+        await service.example_with_transaction()
+
+        # Example 2: Different database (will use same DB for demo)
+        await service.example_with_different_database()
+
+        # Example 3: Manual transaction
+        await service.complex_operation()
+
+        # Example 4: Nested transactions
+        await service.nested_transaction_example()
+
+        # Example 5: Error handling
+        await service.rollback_example()
+
+        print("\n✅ All decorator examples completed successfully!")
+
+    except Exception as e:
+        print(f"❌ Example failed: {e}")
+
+    finally:
+        await close_connections()
+
+if __name__ == "__main__":
+    print("🚀 Starting Decorator Examples")
+    print("=" * 50)
+    asyncio.run(main())
 
 # Key differences from old approach:
 # 1. No more manual connection passing
