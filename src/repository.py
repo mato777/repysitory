@@ -11,7 +11,7 @@ S = TypeVar("S", bound=BaseModel)  # Search model type
 U = TypeVar("U", bound=BaseModel)  # Update model type
 
 
-class Repository[T, S, U]:
+class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
     entity_class: type[T]
     search_class: type[S]
     update_class: type[U]
@@ -29,7 +29,8 @@ class Repository[T, S, U]:
         self.update_class = update_class
         self.table_name = table_name
 
-    def _build_order_clause(self, sort_model: BaseModel | None) -> str:
+    @staticmethod
+    def _build_order_clause(sort_model: BaseModel | None) -> str:
         """Build ORDER BY clause from sort model"""
         if not sort_model:
             return ""
@@ -44,7 +45,8 @@ class Repository[T, S, U]:
 
         return f" ORDER BY {', '.join(order_parts)}"
 
-    def _get_connection(self) -> asyncpg.Connection:
+    @staticmethod
+    def _get_connection() -> asyncpg.Connection:
         """Get the current database connection from context"""
         conn = DatabaseManager.get_current_connection()
         if not conn:
