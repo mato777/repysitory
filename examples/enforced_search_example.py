@@ -1,14 +1,15 @@
 """
-Example showing the benefits of enforced search parameters in Repository definitions
+Example showing the benefits of enforced search parameters and typed updates in Repository definitions
 """
 from pydantic import BaseModel
 from uuid import UUID, uuid4
 from typing import Optional
-from repository import Repository
+from src.repository import Repository
+from src.entities import BaseEntity
+from src.db_context import transactional
 
 # Example 1: User entity with restricted searchable fields
-class User(BaseModel):
-    id: UUID = uuid4()
+class User(BaseEntity):
     email: str
     username: str
     password_hash: str  # Sensitive field
@@ -24,19 +25,35 @@ class UserSearch(BaseModel):
     is_active: Optional[bool] = None
     # Note: password_hash is NOT searchable - good for security!
 
-class UserRepository(Repository[User, UserSearch]):
-    def __init__(self, db_name: str = "default"):
-        super().__init__(User, UserSearch, "users", db_name)
+# Update model - controls what can be updated
+class UserUpdate(BaseModel):
+    email: Optional[str] = None
+    username: Optional[str] = None
+    full_name: Optional[str] = None
+    is_active: Optional[bool] = None
+    # Note: password_hash requires special method - not via general update!
+
+class UserRepository(Repository[User, UserSearch, UserUpdate]):
+    def __init__(self):
+        super().__init__(User, UserSearch, UserUpdate, "users")
 
     # Custom business logic methods
+    @transactional("default")
     async def find_active_users(self):
         search = UserSearch(is_active=True)
         return await self.find_many_by(search)
 
+    @transactional("default")
+    async def update_password(self, user_id: UUID, new_password_hash: str):
+        """Special method for password updates - bypasses general update restrictions"""
+        conn = self._get_connection()
+        await conn.execute(
+            "UPDATE users SET password_hash = $1 WHERE id = $2",
+            new_password_hash, str(user_id)
+        )
 
 # Example 2: Product entity with different search strategy
-class Product(BaseModel):
-    id: UUID = uuid4()
+class Product(BaseEntity):
     name: str
     description: str
     price: float
@@ -51,55 +68,57 @@ class ProductSearch(BaseModel):
     category_id: Optional[UUID] = None
     # Note: internal_cost and supplier_id are NOT searchable
 
-class ProductRepository(Repository[Product, ProductSearch]):
-    def __init__(self, db_name: str = "default"):
-        super().__init__(Product, ProductSearch, "products", db_name)
-
-
-# Example 3: Admin-only repository with full search capabilities
-class ProductAdminSearch(BaseModel):
-    id: Optional[UUID] = None
+# Update model - controls what fields can be updated
+class ProductUpdate(BaseModel):
     name: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[float] = None
     category_id: Optional[UUID] = None
-    internal_cost: Optional[float] = None  # Admin can search by internal fields
-    supplier_id: Optional[UUID] = None
+    # Note: internal_cost and supplier_id require special admin methods
 
-class ProductAdminRepository(Repository[Product, ProductAdminSearch]):
-    def __init__(self, db_name: str = "default"):
-        super().__init__(Product, ProductAdminSearch, "products", db_name)
+class ProductRepository(Repository[Product, ProductSearch, ProductUpdate]):
+    def __init__(self):
+        super().__init__(Product, ProductSearch, ProductUpdate, "products")
 
+    @transactional("default")
+    async def find_by_category(self, category_id: UUID):
+        search = ProductSearch(category_id=category_id)
+        return await self.find_many_by(search)
 
+    @transactional("admin_db")
+    async def admin_update_costs(self, product_id: UUID, internal_cost: float, supplier_id: UUID):
+        """Admin-only method for updating internal fields"""
+        conn = self._get_connection()
+        await conn.execute(
+            "UPDATE products SET internal_cost = $1, supplier_id = $2 WHERE id = $3",
+            internal_cost, supplier_id, str(product_id)
+        )
+
+# Example usage showing type safety
 async def example_usage():
-    """Examples showing type safety and field restrictions"""
-
-    # User repository - password_hash is not searchable
     user_repo = UserRepository()
-
-    # ✅ This works - searching by allowed fields
-    search = UserSearch(email="user@example.com", is_active=True)
-    user = await user_repo.find_one_by(search)
-
-    # ❌ This would cause a type error - password_hash is not in UserSearch
-    # search = UserSearch(password_hash="some_hash")  # IDE error!
-
-    # Product repository - internal fields not searchable
     product_repo = ProductRepository()
 
-    # ✅ This works - searching by public fields
-    search = ProductSearch(name="iPhone", category_id=some_uuid)
-    products = await product_repo.find_many_by(search)
+    # Type-safe search - IDE will autocomplete and validate
+    @transactional("default")
+    async def safe_operations():
+        # ✅ This works - email is in UserSearch
+        users = await user_repo.find_one_by(UserSearch(email="test@example.com"))
 
-    # ❌ This would cause a type error - internal_cost not in ProductSearch
-    # search = ProductSearch(internal_cost=100.0)  # IDE error!
+        # ❌ This would be a compile error - password_hash not in UserSearch
+        # users = await user_repo.find_one_by(UserSearch(password_hash="secret"))
 
-    # Admin repository - can search by internal fields
-    admin_repo = ProductAdminRepository()
+        # ✅ Type-safe updates
+        if users:
+            update_data = UserUpdate(full_name="Updated Name", is_active=False)
+            await user_repo.update(users.id, update_data)
 
-    # ✅ This works - admin can search by internal fields
-    search = ProductAdminSearch(internal_cost=100.0, supplier_id=supplier_uuid)
-    products = await admin_repo.find_many_by(search)
+            # ❌ This would be a compile error - password_hash not in UserUpdate
+            # await user_repo.update(users.id, UserUpdate(password_hash="new_hash"))
 
-
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(example_usage())
+# Benefits of this approach:
+# 1. Security: Sensitive fields can't be accidentally searched or updated
+# 2. Type Safety: Compile-time validation of search and update operations
+# 3. Clear API: Explicit about what fields are searchable/updatable
+# 4. Flexibility: Special methods can bypass restrictions when needed
+# 5. Documentation: Search/Update models serve as API documentation

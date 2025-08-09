@@ -1,21 +1,37 @@
 """
-Example usage of the context-based transaction system with database decorators
+Example usage of the context-based transaction system with the new repository architecture
 """
 import asyncio
-import asyncpg
 from uuid import uuid4
-from entities import Post
-from post_repository import PostRepository
-from db_context import DatabaseManager, transactional, with_db
+from src.entities import BaseEntity
+from src.repository import Repository
+from src.db_context import DatabaseManager, transactional
+from pydantic import BaseModel
+from typing import Optional
 
+# Example entities and models
+class Post(BaseEntity):
+    title: str
+    content: str
+
+class PostSearch(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+
+class PostUpdate(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+
+class PostRepository(Repository[Post, PostSearch, PostUpdate]):
+    def __init__(self):
+        super().__init__(Post, PostSearch, PostUpdate, "posts")
 
 class PostService:
     def __init__(self):
-        self.post_repo = PostRepository("default")
-        self.analytics_repo = PostRepository("analytics")  # Different database
+        self.post_repo = PostRepository()
 
     @transactional("default")
-    async def create_post_with_analytics(self, title: str, content: str):
+    async def create_post_with_processing(self, title: str, content: str):
         """
         This method automatically runs in a transaction on the 'default' database.
         The @transactional decorator ensures all repository operations share the same transaction.
@@ -24,22 +40,24 @@ class PostService:
         post = Post(id=uuid4(), title=title, content=content)
         created_post = await self.post_repo.create(post)
 
-        # Update some related data in the same transaction
-        await self.post_repo.update(created_post.id, {"content": f"{content} [PROCESSED]"})
+        # Update the post in the same transaction using typed update model
+        update_data = PostUpdate(content=f"{content} [PROCESSED]")
+        updated_post = await self.post_repo.update(created_post.id, update_data)
 
-        return created_post
+        return updated_post
 
     @transactional("analytics")
     async def log_analytics(self, post_id: str, action: str):
         """
-        This method runs in a transaction on the 'analytics' database
+        This method runs in a transaction on the 'analytics' database.
+        Same repository, different database context.
         """
         analytics_post = Post(
             id=uuid4(),
             title=f"Analytics: {action}",
             content=f"Post {post_id} - {action}"
         )
-        return await self.analytics_repo.create(analytics_post)
+        return await self.post_repo.create(analytics_post)
 
     async def multi_database_operation(self, title: str, content: str):
         """
@@ -50,62 +68,164 @@ class PostService:
             post = Post(id=uuid4(), title=title, content=content)
             created_post = await self.post_repo.create(post)
 
-            # This will use the same transaction as above due to context
-            await self.post_repo.update(created_post.id, {"title": f"[FINAL] {title}"})
+            # Update within same transaction
+            update_data = PostUpdate(title=f"[MAIN] {title}")
+            main_post = await self.post_repo.update(created_post.id, update_data)
 
         # Separate transaction on analytics database
         async with DatabaseManager.transaction("analytics"):
-            await self.log_analytics(str(created_post.id), "created")
+            analytics_post = Post(
+                id=uuid4(),
+                title="Analytics Entry",
+                content=f"Logged creation of post: {main_post.id}"
+            )
+            analytics_entry = await self.post_repo.create(analytics_post)
+
+        return main_post, analytics_entry
+
+    @transactional("default")
+    async def bulk_operation(self, posts_data: list):
+        """
+        Bulk operation - all or nothing transaction
+        """
+        created_posts = []
+
+        # Create multiple posts
+        for post_data in posts_data:
+            post = Post(id=uuid4(), **post_data)
+            created_post = await self.post_repo.create(post)
+            created_posts.append(created_post)
+
+        # Update all posts with a common suffix
+        for post in created_posts:
+            update_data = PostUpdate(title=f"{post.title} [BATCH]")
+            await self.post_repo.update(post.id, update_data)
+
+        return created_posts
+
+    async def complex_workflow(self, title: str, content: str):
+        """
+        Complex workflow with error handling and multiple transaction scopes
+        """
+        try:
+            # Step 1: Create main content
+            main_post = await self.create_post_with_processing(title, content)
+            print(f"Created main post: {main_post.title}")
+
+            # Step 2: Log analytics (separate transaction)
+            analytics_post = await self.log_analytics(str(main_post.id), "created")
+            print(f"Logged analytics: {analytics_post.title}")
+
+            # Step 3: Additional processing in original database
+            async with DatabaseManager.transaction("default"):
+                # Find and update the post
+                found_post = await self.post_repo.find_by_id(main_post.id)
+                if found_post:
+                    update_data = PostUpdate(content=f"{found_post.content} [WORKFLOW_COMPLETE]")
+                    final_post = await self.post_repo.update(found_post.id, update_data)
+                    print(f"Workflow completed: {final_post.content}")
+
+            return final_post
+
+        except Exception as e:
+            print(f"Workflow failed: {e}")
+            # Each transaction scope handles its own rollback
+            raise
+
+# Advanced usage examples
+class AdvancedPostService:
+    def __init__(self):
+        self.post_repo = PostRepository()
+
+    @transactional("default")
+    async def create_with_validation(self, title: str, content: str):
+        """Post creation with business validation"""
+        # Business validation
+        if len(title) < 5:
+            raise ValueError("Title too short")
+
+        if "forbidden" in content.lower():
+            raise ValueError("Content contains forbidden words")
+
+        # Create post
+        post = Post(id=uuid4(), title=title, content=content)
+        created_post = await self.post_repo.create(post)
+
+        # Auto-format if needed
+        if len(title) > 100:
+            update_data = PostUpdate(title=title[:97] + "...")
+            created_post = await self.post_repo.update(created_post.id, update_data)
 
         return created_post
 
+    @transactional("default")
+    async def archive_old_posts(self, days_old: int = 30):
+        """Archive posts older than specified days"""
+        # Find posts to archive (simplified - would normally check date)
+        all_posts = await self.post_repo.find_many_by()
 
-async def setup_databases():
-    """Setup database pools for demonstration"""
-    # Setup default database
-    default_pool = await asyncpg.create_pool(
-        "postgresql://user:password@localhost/main_db",
-        min_size=1, max_size=10
-    )
-    await DatabaseManager.add_pool("default", default_pool)
+        archived_count = 0
+        for post in all_posts:
+            if "[ARCHIVED]" not in post.title:
+                update_data = PostUpdate(title=f"[ARCHIVED] {post.title}")
+                await self.post_repo.update(post.id, update_data)
+                archived_count += 1
 
-    # Setup analytics database
-    analytics_pool = await asyncpg.create_pool(
-        "postgresql://user:password@localhost/analytics_db",
-        min_size=1, max_size=5
-    )
-    await DatabaseManager.add_pool("analytics", analytics_pool)
-
+        return archived_count
 
 async def main():
-    """Example usage"""
-    await setup_databases()
-
+    """Demonstrate various transaction patterns"""
     service = PostService()
+    advanced_service = AdvancedPostService()
 
-    # Example 1: Automatic transaction with decorator
-    post1 = await service.create_post_with_analytics("Hello World", "This is content")
-    print(f"Created post: {post1.title}")
+    print("=== Basic Transaction Examples ===")
 
-    # Example 2: Multi-database operations
-    post2 = await service.multi_database_operation("Multi DB", "Cross database content")
-    print(f"Created post across databases: {post2.title}")
+    # Example 1: Simple transactional method
+    post1 = await service.create_post_with_processing("Example Post", "This is a test post")
+    print(f"Created: {post1.title} - {post1.content}")
 
-    # Example 3: Manual transaction control
-    async with DatabaseManager.transaction("default") as conn:
-        # All these operations share the same transaction
-        post3 = Post(id=uuid4(), title="Manual TX", content="Manual transaction")
-        await service.post_repo.create(post3, conn=conn)
+    # Example 2: Multi-database operation
+    main_post, analytics_post = await service.multi_database_operation("Multi-DB Post", "Content for multiple databases")
+    print(f"Main: {main_post.title}, Analytics: {analytics_post.title}")
 
-        # Find and update in same transaction
-        found_post = await service.post_repo.find_by_id(post3.id, conn=conn)
-        if found_post:
-            await service.post_repo.update(
-                found_post.id,
-                {"content": "Updated in transaction"},
-                conn=conn
-            )
+    # Example 3: Bulk operation
+    bulk_data = [
+        {"title": "Bulk Post 1", "content": "First bulk post"},
+        {"title": "Bulk Post 2", "content": "Second bulk post"},
+        {"title": "Bulk Post 3", "content": "Third bulk post"}
+    ]
+    bulk_posts = await service.bulk_operation(bulk_data)
+    print(f"Created {len(bulk_posts)} posts in bulk")
 
+    # Example 4: Complex workflow
+    final_post = await service.complex_workflow("Workflow Post", "Complex workflow content")
+    print(f"Workflow result: {final_post.title}")
+
+    print("\n=== Advanced Transaction Examples ===")
+
+    # Example 5: Validation with rollback
+    try:
+        await advanced_service.create_with_validation("Test", "This content is forbidden")
+    except ValueError as e:
+        print(f"Validation failed (rolled back): {e}")
+
+    # Example 6: Successful validation
+    valid_post = await advanced_service.create_with_validation("Valid Long Title", "Valid content")
+    print(f"Valid post created: {valid_post.title}")
+
+    # Example 7: Bulk archive operation
+    archived_count = await advanced_service.archive_old_posts()
+    print(f"Archived {archived_count} posts")
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+# Key patterns demonstrated:
+# 1. @transactional decorator for automatic transaction management
+# 2. Multiple database support with same repository
+# 3. Manual transaction context management
+# 4. Typed update models for safe updates
+# 5. Complex workflows with multiple transaction scopes
+# 6. Business logic integration with transaction boundaries
+# 7. Error handling and automatic rollback
+# 8. Bulk operations within transactions

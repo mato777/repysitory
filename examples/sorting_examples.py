@@ -3,12 +3,49 @@ Example showing how to use the sorting functionality with the repository
 """
 import asyncio
 from uuid import uuid4
-from entities import Post, PostSearch, PostSort, SortOrder
-from post_repository import PostRepository
+from src.entities import BaseEntity, SortOrder
+from src.repository import Repository
+from src.db_context import transactional, DatabaseManager
+from pydantic import BaseModel, ConfigDict
+from typing import Optional
 
+# Example entities and models
+class Post(BaseEntity):
+    title: str
+    content: str
+
+class PostSearch(BaseModel):
+    id: Optional[str] = None
+    title: Optional[str] = None
+    content: Optional[str] = None
+
+class PostUpdate(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+
+class PostSort(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+
+    title: Optional[SortOrder] = None
+    content: Optional[SortOrder] = None
+    id: Optional[SortOrder] = None
+
+class PostRepository(Repository[Post, PostSearch, PostUpdate]):
+    def __init__(self):
+        super().__init__(Post, PostSearch, PostUpdate, "posts")
+
+    # Convenience methods with built-in sorting
+    async def find_all_sorted_by_title(self):
+        sort = PostSort(title=SortOrder.ASC)
+        return await self.find_many_by(sort=sort)
+
+    async def find_latest_posts(self):
+        sort = PostSort(id=SortOrder.DESC)
+        return await self.find_many_by(sort=sort)
+
+@transactional("default")
 async def sorting_examples():
     """Examples of different sorting patterns"""
-
     post_repo = PostRepository()
 
     # Example 1: Simple single field sorting
@@ -73,35 +110,91 @@ async def sorting_examples():
     posts = await post_repo.find_many_by(search=search)
 
 
+@transactional("default")
 async def advanced_sorting_examples():
     """More advanced sorting scenarios"""
-
     post_repo = PostRepository()
 
     # Example 1: Complex business logic with sorting
     async def get_featured_posts():
-        """Get posts sorted for a featured section"""
-        search = PostSearch()  # No specific search criteria
-        sort = PostSort(
-            title=SortOrder.ASC,    # Primary sort: alphabetical
-            id=SortOrder.DESC       # Secondary sort: newest first for same titles
-        )
-        return await post_repo.find_many_by(search=search, sort=sort)
+        """Get posts sorted by multiple criteria for homepage"""
+        # First by title alphabetically, then by content length (simulated with content field)
+        sort = PostSort(title=SortOrder.ASC, content=SortOrder.DESC)
+        return await post_repo.find_many_by(sort=sort)
+
+    # Example 2: Conditional sorting based on user preference
+    async def get_posts_by_preference(user_sort_preference: str):
+        """Dynamic sorting based on user preference"""
+        if user_sort_preference == "newest":
+            sort = PostSort(id=SortOrder.DESC)
+        elif user_sort_preference == "alphabetical":
+            sort = PostSort(title=SortOrder.ASC)
+        else:  # default
+            sort = PostSort(title=SortOrder.ASC, id=SortOrder.DESC)
+
+        return await post_repo.find_many_by(sort=sort)
+
+    # Example 3: Search with fallback sorting
+    async def search_posts_with_fallback(search_term: str):
+        """Search posts with intelligent sorting fallback"""
+        search = PostSearch(title=search_term)
+        posts = await post_repo.find_many_by(search=search)
+
+        if not posts:
+            # Fallback: search by content instead, sorted by relevance (title first)
+            search = PostSearch(content=search_term)
+            sort = PostSort(title=SortOrder.ASC)
+            posts = await post_repo.find_many_by(search=search, sort=sort)
+
+        return posts
+
+    # Run examples
+    featured = await get_featured_posts()
+    newest = await get_posts_by_preference("newest")
+    search_results = await search_posts_with_fallback("tutorial")
 
 
-    # Example 2: Transactional sorting
-    async with post_repo.transaction():
-        # All these operations share the same transaction
-        search = PostSearch(content="important")
+# Example of multiple database sorting
+@transactional("analytics_db")
+async def analytics_sorting_example():
+    """Example using different database for analytics"""
+    analytics_repo = PostRepository()  # Same repo, different DB context
+
+    # Get most popular posts (sorted by engagement metrics)
+    sort = PostSort(title=SortOrder.DESC)  # Simulating popularity sort
+    popular_posts = await analytics_repo.find_many_by(sort=sort)
+
+    return popular_posts
+
+
+# Manual transaction with sorting
+async def manual_transaction_sorting():
+    """Example of manual transaction management with sorting"""
+    post_repo = PostRepository()
+
+    async with DatabaseManager.transaction("default"):
+        # Create some test posts
+        post1 = await post_repo.create(Post(id=uuid4(), title="Zebra Post", content="Last alphabetically"))
+        post2 = await post_repo.create(Post(id=uuid4(), title="Alpha Post", content="First alphabetically"))
+
+        # Sort and verify order
         sort = PostSort(title=SortOrder.ASC)
+        sorted_posts = await post_repo.find_many_by(sort=sort)
 
-        important_posts = await post_repo.find_many_by(search=search, sort=sort)
-
-        # Update posts in the same transaction
-        for post in important_posts:
-            await post_repo.update(post.id, {"content": f"[FEATURED] {post.content}"})
+        assert sorted_posts[0].title == "Alpha Post"
+        assert sorted_posts[-1].title == "Zebra Post"  # Assuming only these two posts
 
 
 if __name__ == "__main__":
     asyncio.run(sorting_examples())
     asyncio.run(advanced_sorting_examples())
+    asyncio.run(analytics_sorting_example())
+    asyncio.run(manual_transaction_sorting())
+
+# Key features demonstrated:
+# 1. Type-safe sorting with PostSort model
+# 2. Multi-field sorting capabilities
+# 3. Integration with search functionality
+# 4. Automatic transaction context management
+# 5. Support for multiple databases
+# 6. Convenience methods for common sorting patterns

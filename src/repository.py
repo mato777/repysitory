@@ -3,23 +3,23 @@ from typing import Generic, TypeVar, List, Optional, Dict, Any, Type
 from uuid import UUID
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
-from db_context import DatabaseManager, with_db
+from src.db_context import DatabaseManager
 
 T = TypeVar('T', bound=BaseModel)  # Entity type
 S = TypeVar('S', bound=BaseModel)  # Search model type
-O = TypeVar('O', bound=BaseModel)  # Sort model type
+U = TypeVar('U', bound=BaseModel)  # Update model type
 
-class Repository(Generic[T, S]):  # Now requires both entity and search types
+class Repository(Generic[T, S, U]):  # Now requires entity, search, and update types
     entity_class: Type[T]
     search_class: Type[S]
+    update_class: Type[U]
     table_name: str
-    db_name: str
 
-    def __init__(self, entity_class: Type[T], search_class: Type[S], table_name: str, db_name: str = "default"):
+    def __init__(self, entity_class: Type[T], search_class: Type[S], update_class: Type[U], table_name: str):
         self.entity_class = entity_class
         self.search_class = search_class
+        self.update_class = update_class
         self.table_name = table_name
-        self.db_name = db_name
 
     def _build_order_clause(self, sort_model: Optional[BaseModel]) -> str:
         """Build ORDER BY clause from sort model"""
@@ -36,26 +36,22 @@ class Repository(Generic[T, S]):  # Now requires both entity and search types
 
         return f" ORDER BY {', '.join(order_parts)}"
 
-    @asynccontextmanager
-    async def transaction(self):
-        """Context manager for database transactions"""
-        async with DatabaseManager.transaction(self.db_name) as conn:
-            yield conn
-
-    @with_db()
-    async def find_by_id(self, id: UUID, *, conn: Optional[asyncpg.Connection] = None) -> Optional[T]:
+    def _get_connection(self) -> asyncpg.Connection:
+        """Get the current database connection from context"""
+        conn = DatabaseManager.get_current_connection()
         if not conn:
-            raise ValueError("No database connection available")
+            raise ValueError("No active transaction found. Repository methods must be called within a transaction context.")
+        return conn
 
+    async def find_by_id(self, id: UUID) -> Optional[T]:
+        conn = self._get_connection()
         row = await conn.fetchrow(f"SELECT * FROM {self.table_name} WHERE id = $1", str(id))
         if row:
             return self.entity_class(**dict(row))
         return None
 
-    @with_db()
-    async def find_one_by(self, search: S, *, conn: Optional[asyncpg.Connection] = None) -> Optional[T]:
-        if not conn:
-            raise ValueError("No database connection available")
+    async def find_one_by(self, search: S) -> Optional[T]:
+        conn = self._get_connection()
 
         # Convert search model to dict and filter out None values
         search_dict = {k: v for k, v in search.model_dump().items() if v is not None}
@@ -71,10 +67,8 @@ class Repository(Generic[T, S]):  # Now requires both entity and search types
             return self.entity_class(**dict(row))
         return None
 
-    @with_db()
-    async def find_many_by(self, search: Optional[S] = None, sort: Optional[BaseModel] = None, *, conn: Optional[asyncpg.Connection] = None) -> List[T]:
-        if not conn:
-            raise ValueError("No database connection available")
+    async def find_many_by(self, search: Optional[S] = None, sort: Optional[BaseModel] = None) -> List[T]:
+        conn = self._get_connection()
 
         if not search:
             query = f"SELECT * FROM {self.table_name}"
@@ -99,10 +93,8 @@ class Repository(Generic[T, S]):  # Now requires both entity and search types
         rows = await conn.fetch(query, *values)
         return [self.entity_class(**dict(row)) for row in rows]
 
-    @with_db()
-    async def create(self, entity: T, *, conn: Optional[asyncpg.Connection] = None) -> T:
-        if not conn:
-            raise ValueError("No database connection available")
+    async def create(self, entity: T) -> T:
+        conn = self._get_connection()
 
         fields = entity.model_dump()
         columns = ', '.join(fields.keys())
@@ -115,10 +107,8 @@ class Repository(Generic[T, S]):  # Now requires both entity and search types
         )
         return entity
 
-    @with_db()
-    async def create_many(self, entities: List[T], *, conn: Optional[asyncpg.Connection] = None) -> List[T]:
-        if not conn:
-            raise ValueError("No database connection available")
+    async def create_many(self, entities: List[T]) -> List[T]:
+        conn = self._get_connection()
         if not entities:
             return []
 
@@ -148,15 +138,17 @@ class Repository(Generic[T, S]):  # Now requires both entity and search types
         )
         return entities
 
-    @with_db()
-    async def update(self, id: UUID, data: Dict[str, Any], *, conn: Optional[asyncpg.Connection] = None) -> Optional[T]:
-        if not conn:
-            raise ValueError("No database connection available")
-        if not data:
-            return await self.find_by_id(id, conn=conn)
+    async def update(self, id: UUID, update_data: U) -> Optional[T]:
+        conn = self._get_connection()
 
-        set_clause = ', '.join([f"{k} = ${i+2}" for i, k in enumerate(data.keys())])
-        values = list(data.values())
+        # Convert update model to dict and filter out None values
+        update_dict = {k: v for k, v in update_data.model_dump().items() if v is not None}
+
+        if not update_dict:
+            return await self.find_by_id(id)
+
+        set_clause = ', '.join([f"{k} = ${i+2}" for i, k in enumerate(update_dict.keys())])
+        values = list(update_dict.values())
         values.insert(0, str(id))
 
         await conn.execute(
@@ -168,19 +160,15 @@ class Repository(Generic[T, S]):  # Now requires both entity and search types
             return self.entity_class(**dict(row))
         return None
 
-    @with_db()
-    async def delete(self, id: UUID, *, conn: Optional[asyncpg.Connection] = None) -> bool:
-        if not conn:
-            raise ValueError("No database connection available")
+    async def delete(self, id: UUID) -> bool:
+        conn = self._get_connection()
 
         result = await conn.execute(f"DELETE FROM {self.table_name} WHERE id = $1", str(id))
         return result != "DELETE 0"
 
-    @with_db()
-    async def delete_many(self, ids: List[UUID], *, conn: Optional[asyncpg.Connection] = None) -> int:
+    async def delete_many(self, ids: List[UUID]) -> int:
         """Delete multiple entities by their IDs. Returns the number of deleted records."""
-        if not conn:
-            raise ValueError("No database connection available")
+        conn = self._get_connection()
         if not ids:
             return 0
 
