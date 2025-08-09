@@ -12,3 +12,11 @@ To my beautiful wife and kids for their support and patience during the developm
 To AI Agents to help me write the code and documentation.
 
 
+## How to run the tests
+1. Check that you have the following installed:
+   - Python 3.13 or higher
+   - uv
+   - Docker
+   - Docker Compose
+
+
