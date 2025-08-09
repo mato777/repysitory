@@ -45,7 +45,7 @@ class TestPostRepositoryOperations:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_find_by_id_not_found(self, post_repo, clean_db):
+    async def test_find_by_id_not_found(self, post_repo):
         """Test finding a non-existent post returns None."""
         non_existent_id = uuid4()
         found_post = await post_repo.find_by_id(non_existent_id)
@@ -53,7 +53,7 @@ class TestPostRepositoryOperations:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_create_many(self, post_repo, sample_posts, clean_db):
+    async def test_create_many(self, post_repo, sample_posts):
         """Test creating multiple posts at once."""
         created_posts = await post_repo.create_many(sample_posts)
 
@@ -71,7 +71,7 @@ class TestPostRepositoryOperations:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_find_one_by_search(self, post_repo, sample_posts, clean_db):
+    async def test_find_one_by_search(self, post_repo, sample_posts):
         """Test finding a single post using search criteria."""
         await post_repo.create_many(sample_posts)
 
@@ -85,7 +85,7 @@ class TestPostRepositoryOperations:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_find_one_by_multiple_criteria(self, post_repo, sample_posts, clean_db):
+    async def test_find_one_by_multiple_criteria(self, post_repo, sample_posts):
         """Test finding a post with multiple search criteria."""
         await post_repo.create_many(sample_posts)
 
@@ -98,7 +98,7 @@ class TestPostRepositoryOperations:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_find_many_by_search(self, post_repo, sample_posts, clean_db):
+    async def test_find_many_by_search(self, post_repo, sample_posts):
         """Test finding multiple posts using search criteria."""
         await post_repo.create_many(sample_posts)
 
@@ -114,7 +114,7 @@ class TestPostRepositoryOperations:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_sorting_single_field(self, post_repo, sample_posts, clean_db):
+    async def test_sorting_single_field(self, post_repo, sample_posts):
         """Test sorting by a single field."""
         await post_repo.create_many(sample_posts)
 
@@ -128,7 +128,7 @@ class TestPostRepositoryOperations:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_sorting_descending(self, post_repo, sample_posts, clean_db):
+    async def test_sorting_descending(self, post_repo, sample_posts):
         """Test sorting in descending order."""
         await post_repo.create_many(sample_posts)
 
@@ -142,7 +142,7 @@ class TestPostRepositoryOperations:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_sorting_multiple_fields(self, post_repo, clean_db):
+    async def test_sorting_multiple_fields(self, post_repo):
         """Test sorting by multiple fields."""
         # Create posts with same title but different content
         posts = [
@@ -165,7 +165,7 @@ class TestPostRepositoryOperations:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_search_and_sort_combined(self, post_repo, clean_db):
+    async def test_search_and_sort_combined(self, post_repo):
         """Test combining search criteria with sorting."""
         posts = [
             Post(id=uuid4(), title="Test A", content="shared content"),
@@ -185,7 +185,7 @@ class TestPostRepositoryOperations:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_update(self, post_repo, clean_db):
+    async def test_update(self, post_repo):
         """Test updating a post."""
         # Create a post
         post = Post(id=uuid4(), title="Original Title", content="Original content")
@@ -206,7 +206,7 @@ class TestPostRepositoryOperations:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_delete(self, post_repo, clean_db):
+    async def test_delete(self, post_repo):
         """Test deleting a post."""
         # Create a post
         post = Post(id=uuid4(), title="To Delete", content="Will be deleted")
@@ -226,7 +226,7 @@ class TestPostRepositoryOperations:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_delete_many(self, post_repo, sample_posts, clean_db):
+    async def test_delete_many(self, post_repo, sample_posts):
         """Test deleting multiple posts."""
         await post_repo.create_many(sample_posts)
 
@@ -247,7 +247,7 @@ class TestPostRepositoryOperations:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_convenience_methods(self, post_repo, sample_posts, clean_db):
+    async def test_convenience_methods(self, post_repo, sample_posts):
         """Test convenience methods."""
         await post_repo.create_many(sample_posts)
 
@@ -263,7 +263,7 @@ class TestPostRepositoryOperations:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_transaction_rollback(self, post_repo, clean_db):
+    async def test_transaction_rollback(self, post_repo):
         """Test that transactions rollback on error."""
         post = Post(id=uuid4(), title="Test", content="Test")
 
@@ -285,7 +285,7 @@ class TestPostRepositoryOperations:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_transaction_commit(self, post_repo, clean_db):
+    async def test_transaction_commit(self, post_repo):
         """Test that transactions commit successfully."""
         posts = [
             Post(id=uuid4(), title="Post 1", content="Content 1"),
@@ -302,3 +302,19 @@ class TestPostRepositoryOperations:
         # Both should still exist after transaction commits
         found_posts = await post_repo.find_many_post_by()
         assert len(found_posts) == 2
+
+    @pytest.mark.asyncio
+    @transactional("test")
+    async def test_find_one_by_no_results_found(self, post_repo):
+        """Test that find_one_by returns None when no matching records are found"""
+        # This tests the case where fetchrow returns None (line 67 in repository.py)
+        # Create a post with specific data
+        post = Post(id=uuid4(), title="Existing Post", content="Existing content")
+        await post_repo.create(post)
+
+        # Search for a post that doesn't exist
+        search = PostSearch(title="Non-existent Post")
+        found_post = await post_repo.find_one_by(search)
+
+        # Should return None when no matching record is found
+        assert found_post is None

@@ -40,14 +40,10 @@ async def test_db_pool(postgres_container):
 
     yield pool
 
+    async with pool.acquire() as conn:
+        await conn.execute("TRUNCATE TABLE posts;")
+
     # Cleanup: close the pool after each test
     await pool.close()
 
 
-@pytest_asyncio.fixture
-async def clean_db():
-    """Clean the database before each test."""
-    # Get the current pool for this test
-    pool = await DatabaseManager.get_pool("test")
-    async with pool.acquire() as conn:
-        await conn.execute("TRUNCATE TABLE posts;")

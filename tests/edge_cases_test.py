@@ -16,21 +16,21 @@ class TestEdgeCasesAndValidation:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_create_empty_list(self, post_repo, clean_db):
+    async def test_create_empty_list(self, post_repo):
         """Test creating an empty list of posts."""
         result = await post_repo.create_many([])
         assert result == []
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_delete_empty_list(self, post_repo, clean_db):
+    async def test_delete_empty_list(self, post_repo):
         """Test deleting an empty list of IDs."""
         result = await post_repo.delete_many([])
         assert result == 0
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_delete_non_existent_ids(self, post_repo, clean_db):
+    async def test_delete_non_existent_ids(self, post_repo):
         """Test deleting non-existent posts."""
         non_existent_ids = [uuid4(), uuid4()]
         deleted_count = await post_repo.delete_many(non_existent_ids)
@@ -38,7 +38,7 @@ class TestEdgeCasesAndValidation:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_update_non_existent_post(self, post_repo, clean_db):
+    async def test_update_non_existent_post(self, post_repo):
         """Test updating a non-existent post."""
         non_existent_id = uuid4()
         result = await post_repo.update(non_existent_id, PostUpdate(title="New Title"))
@@ -46,7 +46,7 @@ class TestEdgeCasesAndValidation:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_update_with_empty_data(self, post_repo, clean_db):
+    async def test_update_with_empty_data(self, post_repo):
         """Test updating with empty data returns the original post."""
         post = Post(id=uuid4(), title="Original", content="Original content")
         await post_repo.create(post)
@@ -58,7 +58,7 @@ class TestEdgeCasesAndValidation:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_search_with_no_criteria(self, post_repo, clean_db):
+    async def test_search_with_no_criteria(self, post_repo):
         """Test searching with no criteria returns None for find_one_by."""
         # Create a post first
         post = Post(id=uuid4(), title="Test", content="Test content")
@@ -71,7 +71,7 @@ class TestEdgeCasesAndValidation:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_sort_with_no_criteria(self, post_repo, clean_db):
+    async def test_sort_with_no_criteria(self, post_repo):
         """Test sorting with no sort criteria."""
         posts = [
             Post(id=uuid4(), title="B", content="Content B"),
@@ -87,7 +87,7 @@ class TestEdgeCasesAndValidation:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_mixed_partial_delete(self, post_repo, clean_db):
+    async def test_mixed_partial_delete(self, post_repo):
         """Test deleting a mix of existing and non-existent posts."""
         # Create some posts
         existing_posts = [
@@ -109,7 +109,7 @@ class TestEdgeCasesAndValidation:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_large_batch_operations(self, post_repo, clean_db):
+    async def test_large_batch_operations(self, post_repo):
         """Test operations with larger batches."""
         # Create 100 posts
         posts = [
@@ -132,7 +132,7 @@ class TestEdgeCasesAndValidation:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_uuid_consistency(self, post_repo, clean_db):
+    async def test_uuid_consistency(self, post_repo):
         """Test that UUIDs are handled consistently."""
         post_id = uuid4()
         post = Post(id=post_id, title="UUID Test", content="Testing UUID handling")
@@ -153,7 +153,7 @@ class TestEdgeCasesAndValidation:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_special_characters_in_content(self, post_repo, clean_db):
+    async def test_special_characters_in_content(self, post_repo):
         """Test handling of special characters in post content."""
         special_content = "Content with 'quotes', \"double quotes\", and $pecial ch@rs! 🚀"
         post = Post(
@@ -170,7 +170,7 @@ class TestEdgeCasesAndValidation:
 
     @pytest.mark.asyncio
     @transactional("test")
-    async def test_long_content(self, post_repo, clean_db):
+    async def test_long_content(self, post_repo):
         """Test handling of very long content."""
         long_content = "A" * 10000  # 10KB of content
         post = Post(

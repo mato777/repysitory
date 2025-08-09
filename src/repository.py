@@ -2,7 +2,6 @@ import asyncpg
 from typing import Generic, TypeVar, List, Optional, Dict, Any, Type
 from uuid import UUID
 from pydantic import BaseModel
-from contextlib import asynccontextmanager
 from src.db_context import DatabaseManager
 
 T = TypeVar('T', bound=BaseModel)  # Entity type

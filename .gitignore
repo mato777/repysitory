@@ -3,3 +3,5 @@
 .venv/
 *.iml
 __pycache__/
+.coverage
+htmlcov
