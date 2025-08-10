@@ -5,6 +5,7 @@ import asyncpg
 from pydantic import BaseModel
 
 from src.db_context import DatabaseManager
+from src.query_builder import QueryBuilder
 
 T = TypeVar("T", bound=BaseModel)  # Entity type
 S = TypeVar("S", bound=BaseModel)  # Search model type
@@ -29,8 +30,7 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         self.update_class = update_class
         self.table_name = table_name
 
-    @staticmethod
-    def _build_order_clause(sort_model: BaseModel | None) -> str:
+    def _build_order_clause(self, sort_model: BaseModel | None) -> str:
         """Build ORDER BY clause from sort model"""
         if not sort_model:
             return ""
@@ -43,7 +43,7 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         for field, order in sort_dict.items():
             order_parts.append(f"{field} {order}")
 
-        return f" ORDER BY {', '.join(order_parts)}"
+        return ", ".join(order_parts)
 
     @staticmethod
     def _get_connection() -> asyncpg.Connection:
@@ -55,11 +55,25 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
             )
         return conn
 
+    def _apply_search_conditions(
+        self, builder: QueryBuilder, search: S
+    ) -> QueryBuilder:
+        """Apply search conditions to the query builder"""
+        search_dict = {k: v for k, v in search.model_dump().items() if v is not None}
+
+        for field, value in search_dict.items():
+            builder = builder.where(field, value)
+
+        return builder
+
     async def find_by_id(self, entity_id: UUID) -> T | None:
         conn = self._get_connection()
-        row = await conn.fetchrow(
-            f"SELECT * FROM {self.table_name} WHERE id = $1", str(entity_id)
+
+        query, params = (
+            QueryBuilder(self.table_name).where("id", str(entity_id)).build()
         )
+
+        row = await conn.fetchrow(query, *params)
         if row:
             return self.entity_class(**dict(row))
         return None
@@ -68,16 +82,14 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         conn = self._get_connection()
 
         search_dict = {k: v for k, v in search.model_dump().items() if v is not None}
-
         if not search_dict:
             return None
 
-        keys = list(search_dict.keys())
-        values = list(search_dict.values())
-        where_clause = " AND ".join([f"{k} = ${i + 1}" for i, k in enumerate(keys)])
-        row = await conn.fetchrow(
-            f"SELECT * FROM {self.table_name} WHERE {where_clause}", *values
-        )
+        builder = QueryBuilder(self.table_name)
+        builder = self._apply_search_conditions(builder, search)
+        query, params = builder.build()
+
+        row = await conn.fetchrow(query, *params)
         if row:
             return self.entity_class(**dict(row))
         return None
@@ -87,30 +99,18 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
     ) -> list[T]:
         conn = self._get_connection()
 
-        if not search:
-            query = f"SELECT * FROM {self.table_name}"
-            values = []
-        else:
-            search_dict = {
-                k: v for k, v in search.model_dump().items() if v is not None
-            }
+        builder = QueryBuilder(self.table_name)
 
-            if not search_dict:
-                query = f"SELECT * FROM {self.table_name}"
-                values = []
-            else:
-                keys = list(search_dict.keys())
-                values = list(search_dict.values())
-                where_clause = " AND ".join(
-                    [f"{k} = ${i + 1}" for i, k in enumerate(keys)]
-                )
-                query = f"SELECT * FROM {self.table_name} WHERE {where_clause}"
+        if search:
+            builder = self._apply_search_conditions(builder, search)
 
-        # Add ORDER BY clause
+        # Add ORDER BY clause if sort is provided
         order_clause = self._build_order_clause(sort)
-        query += order_clause
+        if order_clause:
+            builder = builder.order_by(order_clause)
 
-        rows = await conn.fetch(query, *values)
+        query, params = builder.build()
+        rows = await conn.fetch(query, *params)
         return [self.entity_class(**dict(row)) for row in rows]
 
     async def create(self, entity: T) -> T:
@@ -175,9 +175,13 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         await conn.execute(
             f"UPDATE {self.table_name} SET {set_clause} WHERE id = $1", *values
         )
-        row = await conn.fetchrow(
-            f"SELECT * FROM {self.table_name} WHERE id = $1", str(entity_id)
+
+        # Use QueryBuilder for the SELECT query
+        query, params = (
+            QueryBuilder(self.table_name).where("id", str(entity_id)).build()
         )
+
+        row = await conn.fetchrow(query, *params)
         if row:
             return self.entity_class(**dict(row))
         return None
