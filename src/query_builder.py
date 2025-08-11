@@ -23,6 +23,8 @@ class QueryBuilder:
         self.or_where_conditions: list[str] = []
         self.params: list[Any] = []
         self.order_by_clause = ""
+        self.limit_count: int | None = None
+        self.offset_count: int | None = None
 
     def _clone(self) -> "QueryBuilder":
         """Create a copy of the current QueryBuilder instance"""
@@ -32,6 +34,8 @@ class QueryBuilder:
         new_builder.or_where_conditions = self.or_where_conditions.copy()
         new_builder.params = self.params.copy()
         new_builder.order_by_clause = self.order_by_clause
+        new_builder.limit_count = self.limit_count
+        new_builder.offset_count = self.offset_count
         return new_builder
 
     def _add_condition(
@@ -125,13 +129,17 @@ class QueryBuilder:
         condition: str, param_offset: int, total_group_params: int
     ) -> str:
         """Adjust parameter indices in a condition string"""
-        adjusted_condition = condition
-        # Replace in reverse order to avoid double replacements
-        for i in reversed(range(total_group_params)):
-            old_param = f"${i + 1}"
-            new_param = f"${param_offset + i + 1}"
-            adjusted_condition = adjusted_condition.replace(old_param, new_param)
-        return adjusted_condition
+        import re
+
+        def replace_param(match):
+            param_num = int(match.group(1))
+            if param_num <= total_group_params:
+                return f"${param_offset + param_num}"
+            return match.group(0)
+
+        # Use regex to find and replace parameter placeholders
+        # This avoids issues with overlapping replacements
+        return re.sub(r"\$(\d+)", replace_param, condition)
 
     def select(self, fields: str) -> "QueryBuilder":
         """Set the SELECT fields"""
@@ -256,6 +264,37 @@ class QueryBuilder:
         new_builder.order_by_clause = f" ORDER BY {clause}"
         return new_builder
 
+    def limit(self, count: int) -> "QueryBuilder":
+        """Set the LIMIT clause"""
+        new_builder = self._clone()
+        new_builder.limit_count = count
+        return new_builder
+
+    def offset(self, count: int) -> "QueryBuilder":
+        """Set the OFFSET clause"""
+        new_builder = self._clone()
+        new_builder.offset_count = count
+        return new_builder
+
+    def paginate(self, page: int, per_page: int = 10) -> "QueryBuilder":
+        """
+        Set pagination parameters using page-based interface
+
+        Args:
+            page: Page number (1-based)
+            per_page: Number of records per page (default: 10)
+
+        Returns:
+            QueryBuilder with LIMIT and OFFSET set for the specified page
+        """
+        if page < 1:
+            raise ValueError("Page number must be 1 or greater")
+        if per_page < 1:
+            raise ValueError("Per page count must be 1 or greater")
+
+        offset = (page - 1) * per_page
+        return self.limit(per_page).offset(offset)
+
     def build(self) -> tuple[str, list[Any]]:
         """Build the final SQL query and parameters"""
         query_parts = [f"SELECT {self.select_fields} FROM {self.table_name}"]
@@ -289,6 +328,12 @@ class QueryBuilder:
 
         if self.order_by_clause:
             query_parts.append(self.order_by_clause.strip())
+
+        if self.limit_count is not None:
+            query_parts.append(f"LIMIT {self.limit_count}")
+
+        if self.offset_count is not None:
+            query_parts.append(f"OFFSET {self.offset_count}")
 
         return " ".join(query_parts), self.params
 
