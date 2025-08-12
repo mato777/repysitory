@@ -1,4 +1,4 @@
-from typing import TypeVar
+from typing import Any, Protocol, TypeVar
 from uuid import UUID
 
 import asyncpg
@@ -12,25 +12,81 @@ S = TypeVar("S", bound=BaseModel)  # Search model type
 U = TypeVar("U", bound=BaseModel)  # Update model type
 
 
-class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
-    entity_class: type[T]
-    search_class: type[S]
-    update_class: type[U]
-    table_name: str
+class DatabaseConnection(Protocol):
+    """Protocol for database connection operations"""
 
-    def __init__(
-        self,
-        entity_class: type[T],
-        search_class: type[S],
-        update_class: type[U],
-        table_name: str,
-    ):
+    async def fetch(self, query: str, *args) -> list[Any]: ...
+    async def fetchrow(self, query: str, *args) -> Any: ...
+    async def fetchval(self, query: str, *args) -> Any: ...
+    async def execute(self, query: str, *args) -> str: ...
+
+
+class DatabaseOperations:
+    """Composition class for database operations"""
+
+    @staticmethod
+    def get_connection() -> asyncpg.Connection:
+        """Get the current database connection from context"""
+        conn = DatabaseManager.get_current_connection()
+        if not conn:
+            raise ValueError(
+                "No active transaction found. Repository methods must be called within a transaction context."
+            )
+        return conn
+
+    async def fetch_all(self, query: str, params: list[Any]) -> list[Any]:
+        """Execute query and fetch all rows"""
+        conn = self.get_connection()
+        return await conn.fetch(query, *params)
+
+    async def fetch_one(self, query: str, params: list[Any]) -> Any:
+        """Execute query and fetch one row"""
+        conn = self.get_connection()
+        return await conn.fetchrow(query, *params)
+
+    async def fetch_value(self, query: str, params: list[Any]) -> Any:
+        """Execute query and fetch single value"""
+        conn = self.get_connection()
+        return await conn.fetchval(query, *params)
+
+    async def execute_query(self, query: str, params: list[Any]) -> str:
+        """Execute query and return result"""
+        conn = self.get_connection()
+        return await conn.execute(query, *params)
+
+
+class EntityMapper[T: BaseModel]:
+    """Composition class for entity mapping operations"""
+
+    def __init__(self, entity_class: type[T]):
         self.entity_class = entity_class
-        self.search_class = search_class
-        self.update_class = update_class
-        self.table_name = table_name
 
-    def _build_order_clause(self, sort_model: BaseModel | None) -> str:
+    def map_row_to_entity(self, row: Any) -> T:
+        """Map database row to entity"""
+        return self.entity_class(**dict(row))
+
+    def map_rows_to_entities(self, rows: list[Any]) -> list[T]:
+        """Map database rows to entities"""
+        return [self.map_row_to_entity(row) for row in rows]
+
+
+class SearchConditionBuilder:
+    """Composition class for building search conditions"""
+
+    @staticmethod
+    def apply_search_conditions(
+        builder: QueryBuilder, search: BaseModel
+    ) -> QueryBuilder:
+        """Apply search conditions to the query builder"""
+        search_dict = {k: v for k, v in search.model_dump().items() if v is not None}
+
+        for field, value in search_dict.items():
+            builder = builder.where(field, value)
+
+        return builder
+
+    @staticmethod
+    def build_order_clause(sort_model: BaseModel | None) -> str:
         """Build ORDER BY clause from sort model"""
         if not sort_model:
             return ""
@@ -45,90 +101,201 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
 
         return ", ".join(order_parts)
 
-    @staticmethod
-    def _get_connection() -> asyncpg.Connection:
-        """Get the current database connection from context"""
-        conn = DatabaseManager.get_current_connection()
-        if not conn:
-            raise ValueError(
-                "No active transaction found. Repository methods must be called within a transaction context."
-            )
-        return conn
 
-    def _apply_search_conditions(
-        self, builder: QueryBuilder, search: S
-    ) -> QueryBuilder:
-        """Apply search conditions to the query builder"""
-        search_dict = {k: v for k, v in search.model_dump().items() if v is not None}
+class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
+    """Repository class using composition and inheritance"""
 
-        for field, value in search_dict.items():
-            builder = builder.where(field, value)
+    def __init__(
+        self,
+        entity_class: type[T],
+        search_class: type[S],
+        update_class: type[U],
+        table_name: str,
+    ):
+        self.entity_class = entity_class
+        self.search_class = search_class
+        self.update_class = update_class
+        self.table_name = table_name
+        self._query_builder: QueryBuilder | None = None
 
-        return builder
+        # Composition: Inject dependencies
+        self.db_ops = DatabaseOperations()
+        self.entity_mapper = EntityMapper(entity_class)
+        self.search_builder = SearchConditionBuilder()
 
-    async def find_by_id(self, entity_id: UUID) -> T | None:
-        conn = self._get_connection()
+    def _get_or_create_query_builder(self) -> QueryBuilder:
+        """Get existing query builder or create a new one"""
+        if self._query_builder is None:
+            return QueryBuilder(self.table_name)
+        return self._query_builder
 
-        query, params = (
-            QueryBuilder(self.table_name).where("id", str(entity_id)).build()
+    def _clone_with_query_builder(
+        self, query_builder: QueryBuilder
+    ) -> "Repository[T, S, U]":
+        """Create a new repository instance with the given query builder"""
+        new_repo = Repository(
+            self.entity_class, self.search_class, self.update_class, self.table_name
         )
+        new_repo._query_builder = query_builder
+        return new_repo
 
-        row = await conn.fetchrow(query, *params)
+    # Fluent query methods that return a new repository instance
+    def select(self, fields: str = "*") -> "Repository[T, S, U]":
+        """Set the SELECT fields"""
+        current_builder = self._get_or_create_query_builder()
+        new_builder = current_builder.select(fields)
+        return self._clone_with_query_builder(new_builder)
+
+    def where(
+        self, field: str, value: Any, operator: str = "="
+    ) -> "Repository[T, S, U]":
+        """Add a WHERE condition"""
+        current_builder = self._get_or_create_query_builder()
+        new_builder = current_builder.where(field, value, operator)
+        return self._clone_with_query_builder(new_builder)
+
+    def or_where(
+        self, field: str, value: Any, operator: str = "="
+    ) -> "Repository[T, S, U]":
+        """Add an OR WHERE condition"""
+        current_builder = self._get_or_create_query_builder()
+        new_builder = current_builder.or_where(field, value, operator)
+        return self._clone_with_query_builder(new_builder)
+
+    def where_in(self, field: str, values: list) -> "Repository[T, S, U]":
+        """Add a WHERE IN condition"""
+        current_builder = self._get_or_create_query_builder()
+        new_builder = current_builder.where_in(field, values)
+        return self._clone_with_query_builder(new_builder)
+
+    def where_not_in(self, field: str, values: list) -> "Repository[T, S, U]":
+        """Add a WHERE NOT IN condition"""
+        current_builder = self._get_or_create_query_builder()
+        new_builder = current_builder.where_not_in(field, values)
+        return self._clone_with_query_builder(new_builder)
+
+    def order_by(self, clause: str) -> "Repository[T, S, U]":
+        """Add ORDER BY clause"""
+        current_builder = self._get_or_create_query_builder()
+        new_builder = current_builder.order_by(clause)
+        return self._clone_with_query_builder(new_builder)
+
+    def limit(self, count: int) -> "Repository[T, S, U]":
+        """Set the LIMIT clause"""
+        current_builder = self._get_or_create_query_builder()
+        new_builder = current_builder.limit(count)
+        return self._clone_with_query_builder(new_builder)
+
+    def offset(self, count: int) -> "Repository[T, S, U]":
+        """Set the OFFSET clause"""
+        current_builder = self._get_or_create_query_builder()
+        new_builder = current_builder.offset(count)
+        return self._clone_with_query_builder(new_builder)
+
+    def paginate(self, page: int, per_page: int = 10) -> "Repository[T, S, U]":
+        """Set pagination parameters"""
+        current_builder = self._get_or_create_query_builder()
+        new_builder = current_builder.paginate(page, per_page)
+        return self._clone_with_query_builder(new_builder)
+
+    # Execution methods for fluent queries
+    async def get(self) -> list[T]:
+        """Execute the query and return all matching entities"""
+        if self._query_builder is None:
+            self._query_builder = QueryBuilder(self.table_name)
+
+        query, params = self._query_builder.build()
+        rows = await self.db_ops.fetch_all(query, params)
+        return self.entity_mapper.map_rows_to_entities(rows)
+
+    async def first(self) -> T | None:
+        """Execute the query and return the first matching entity"""
+        current_builder = self._get_or_create_query_builder()
+        limited_builder = current_builder.limit(1)
+
+        query, params = limited_builder.build()
+        row = await self.db_ops.fetch_one(query, params)
         if row:
-            return self.entity_class(**dict(row))
+            return self.entity_mapper.map_row_to_entity(row)
         return None
 
-    async def find_one_by(self, search: S) -> T | None:
-        conn = self._get_connection()
+    async def count(self) -> int:
+        """Execute the query and return the count of matching records"""
+        current_builder = self._get_or_create_query_builder()
+        count_builder = current_builder.select("COUNT(*)")
 
+        query, params = count_builder.build()
+        result = await self.db_ops.fetch_value(query, params)
+        return result or 0
+
+    async def exists(self) -> bool:
+        """Check if any records match the query"""
+        count = await self.count()
+        return count > 0
+
+    def to_sql(self) -> str:
+        """Return the SQL query string for debugging"""
+        current_builder = self._get_or_create_query_builder()
+        return current_builder.to_sql()
+
+    def build(self) -> tuple[str, list[Any]]:
+        """Build the SQL query and parameters"""
+        current_builder = self._get_or_create_query_builder()
+        return current_builder.build()
+
+    # CRUD operations - refactored to use fluent interface where possible
+    async def find_by_id(self, entity_id: UUID) -> T | None:
+        """Find entity by ID using fluent interface"""
+        return await self.where("id", str(entity_id)).first()
+
+    async def find_one_by(self, search: S) -> T | None:
+        """Find one entity by search criteria using fluent interface"""
         search_dict = {k: v for k, v in search.model_dump().items() if v is not None}
         if not search_dict:
             return None
 
-        builder = QueryBuilder(self.table_name)
-        builder = self._apply_search_conditions(builder, search)
-        query, params = builder.build()
+        # Build query using fluent interface
+        query_repo = self
+        for field, value in search_dict.items():
+            query_repo = query_repo.where(field, value)
 
-        row = await conn.fetchrow(query, *params)
-        if row:
-            return self.entity_class(**dict(row))
-        return None
+        return await query_repo.first()
 
     async def find_many_by(
         self, search: S | None = None, sort: BaseModel | None = None
     ) -> list[T]:
-        conn = self._get_connection()
-
-        builder = QueryBuilder(self.table_name)
+        """Find many entities by search criteria using fluent interface"""
+        query_repo = self
 
         if search:
-            builder = self._apply_search_conditions(builder, search)
+            search_dict = {
+                k: v for k, v in search.model_dump().items() if v is not None
+            }
+            for field, value in search_dict.items():
+                query_repo = query_repo.where(field, value)
 
         # Add ORDER BY clause if sort is provided
-        order_clause = self._build_order_clause(sort)
+        order_clause = self.search_builder.build_order_clause(sort)
         if order_clause:
-            builder = builder.order_by(order_clause)
+            query_repo = query_repo.order_by(order_clause)
 
-        query, params = builder.build()
-        rows = await conn.fetch(query, *params)
-        return [self.entity_class(**dict(row)) for row in rows]
+        return await query_repo.get()
 
     async def create(self, entity: T) -> T:
-        conn = self._get_connection()
-
+        """Create a new entity"""
         fields = entity.model_dump()
         columns = ", ".join(fields.keys())
         values = list(fields.values())
         placeholders = ", ".join([f"${i + 1}" for i in range(len(values))])
 
-        await conn.execute(
+        await self.db_ops.execute_query(
             f"INSERT INTO {self.table_name} ({columns}) VALUES ({placeholders})",
-            *values,
+            values,
         )
         return entity
 
     async def create_many(self, entities: list[T]) -> list[T]:
-        conn = self._get_connection()
+        """Create multiple entities"""
         if not entities:
             return []
 
@@ -150,15 +317,14 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
 
         values_clause = ", ".join(rows_placeholders)
 
-        await conn.execute(
+        await self.db_ops.execute_query(
             f"INSERT INTO {self.table_name} ({columns}) VALUES {values_clause}",
-            *all_values,
+            all_values,
         )
         return entities
 
     async def update(self, entity_id: UUID, update_data: U) -> T | None:
-        conn = self._get_connection()
-
+        """Update entity and return updated version using fluent interface"""
         update_dict = {
             k: v for k, v in update_data.model_dump().items() if v is not None
         }
@@ -172,40 +338,33 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         values = list(update_dict.values())
         values.insert(0, str(entity_id))
 
-        await conn.execute(
-            f"UPDATE {self.table_name} SET {set_clause} WHERE id = $1", *values
+        await self.db_ops.execute_query(
+            f"UPDATE {self.table_name} SET {set_clause} WHERE id = $1", values
         )
 
-        # Use QueryBuilder for the SELECT query
-        query, params = (
-            QueryBuilder(self.table_name).where("id", str(entity_id)).build()
-        )
-
-        row = await conn.fetchrow(query, *params)
-        if row:
-            return self.entity_class(**dict(row))
-        return None
+        # Use fluent interface to fetch updated entity
+        return await self.find_by_id(entity_id)
 
     async def delete(self, entity_id: UUID) -> bool:
-        conn = self._get_connection()
-
-        result = await conn.execute(
-            f"DELETE FROM {self.table_name} WHERE id = $1", str(entity_id)
+        """Delete entity by ID"""
+        result = await self.db_ops.execute_query(
+            f"DELETE FROM {self.table_name} WHERE id = $1", [str(entity_id)]
         )
         return result != "DELETE 0"
 
     async def delete_many(self, ids: list[UUID]) -> int:
-        """Delete multiple entities by their IDs. Returns the number of deleted records."""
-        conn = self._get_connection()
+        """Delete multiple entities by their IDs using fluent interface"""
         if not ids:
             return 0
 
         str_ids = [str(entity_id) for entity_id in ids]
 
+        # Could potentially use fluent interface: self.where_in("id", str_ids).delete()
+        # But keeping direct implementation for now
         placeholders = ", ".join([f"${i + 1}" for i in range(len(str_ids))])
 
-        result = await conn.execute(
-            f"DELETE FROM {self.table_name} WHERE id IN ({placeholders})", *str_ids
+        result = await self.db_ops.execute_query(
+            f"DELETE FROM {self.table_name} WHERE id IN ({placeholders})", str_ids
         )
 
         deleted_count = int(result.split()[-1]) if result != "DELETE 0" else 0
