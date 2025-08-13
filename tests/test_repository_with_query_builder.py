@@ -3,37 +3,21 @@ Tests for Repository fluent query builder functionality.
 Tests the integration between Repository and QueryBuilder for fluent chaining.
 """
 
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
-from pydantic import BaseModel
 
 from src.db_context import DatabaseManager, transactional
 from src.repository import Repository
-
-
-# Test entities
-class TestPost(BaseModel):
-    id: UUID
-    title: str
-    content: str
-    published: bool
-    category: str
-    author_id: UUID
-
-
-class TestPostSearch(BaseModel):
-    title: str | None = None
-    published: bool | None = None
-    category: str | None = None
-    author_id: UUID | None = None
-
-
-class TestPostUpdate(BaseModel):
-    title: str | None = None
-    content: str | None = None
-    published: bool | None = None
-    category: str | None = None
+from tests.post_entities import (
+    Post as PostEntity,
+)
+from tests.post_entities import (
+    PostSearch as PostSearchArgs,
+)
+from tests.post_entities import (
+    PostUpdate as PostUpdateArgs,
+)
 
 
 class TestRepositoryWithQueryBuilder:
@@ -42,7 +26,7 @@ class TestRepositoryWithQueryBuilder:
     @pytest.fixture
     def repository(self):
         """Create a test repository instance"""
-        return Repository(TestPost, TestPostSearch, TestPostUpdate, "test_posts")
+        return Repository(PostEntity, PostSearchArgs, PostUpdateArgs, "test_posts")
 
     @pytest.fixture
     def sample_posts(self):
@@ -93,6 +77,8 @@ class TestRepositoryWithQueryBuilder:
     async def setup_test_data(self, sample_posts):
         """Helper to set up test table and data"""
         conn = DatabaseManager.get_current_connection()
+        if not conn:
+            raise RuntimeError("No database connection available for test setup")
 
         # Create test table
         await conn.execute("""

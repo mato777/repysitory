@@ -30,7 +30,10 @@ async def test_db_pool(postgres_container):
             CREATE TABLE IF NOT EXISTS posts (
                 id UUID PRIMARY KEY,
                 title VARCHAR(255) NOT NULL,
-                content TEXT NOT NULL
+                content TEXT NOT NULL,
+                published BOOLEAN NOT NULL DEFAULT FALSE,
+                category VARCHAR(100),
+                author_id UUID
             );
         """
         )

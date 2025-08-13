@@ -8,13 +8,6 @@ dependencies = [
     "pydantic>=2.11.7",
 ]
 
-[project.scripts]
-# Custom commands that can be run with `uv run <command>`
-lint = "ruff check src/ tests/ examples/"
-lint-fix = "ruff check --fix src/ tests/ examples/"
-format = "ruff format src/ tests/ examples/"
-format-check = "ruff format --check src/ tests/ examples/"
-
 [dependency-groups]
 dev = [
     "pytest>=8.4.1",
@@ -24,7 +17,13 @@ dev = [
     "ruff>=0.8.0",
     "pre-commit>=3.6.0",
     "pytest-cov>=6.2.1",
+    "taskipy>=1.14.1",
 ]
+
+[tool.taskipy.tasks]
+test = "pytest --cov=eloquent_py --cov-report=html"
+format = "uv run ruff format --check --diff"
+check = "uv run ruff check"
 
 # Ruff configuration
 [tool.ruff]
