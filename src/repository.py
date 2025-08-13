@@ -1,105 +1,16 @@
-from typing import Any, Protocol, TypeVar
+from typing import Any, TypeVar
 from uuid import UUID
 
-import asyncpg
 from pydantic import BaseModel
 
-from src.db_context import DatabaseManager
+from src.database_operations import DatabaseOperations
+from src.entity_mapper import EntityMapper
 from src.query_builder import QueryBuilder
+from src.search_condition_builder import SearchConditionBuilder
 
 T = TypeVar("T", bound=BaseModel)  # Entity type
 S = TypeVar("S", bound=BaseModel)  # Search model type
 U = TypeVar("U", bound=BaseModel)  # Update model type
-
-
-class DatabaseConnection(Protocol):
-    """Protocol for database connection operations"""
-
-    async def fetch(self, query: str, *args) -> list[Any]: ...
-    async def fetchrow(self, query: str, *args) -> Any: ...
-    async def fetchval(self, query: str, *args) -> Any: ...
-    async def execute(self, query: str, *args) -> str: ...
-
-
-class DatabaseOperations:
-    """Composition class for database operations"""
-
-    @staticmethod
-    def get_connection() -> asyncpg.Connection:
-        """Get the current database connection from context"""
-        conn = DatabaseManager.get_current_connection()
-        if not conn:
-            raise ValueError(
-                "No active transaction found. Repository methods must be called within a transaction context."
-            )
-        return conn
-
-    async def fetch_all(self, query: str, params: list[Any]) -> list[Any]:
-        """Execute query and fetch all rows"""
-        conn = self.get_connection()
-        return await conn.fetch(query, *params)
-
-    async def fetch_one(self, query: str, params: list[Any]) -> Any:
-        """Execute query and fetch one row"""
-        conn = self.get_connection()
-        return await conn.fetchrow(query, *params)
-
-    async def fetch_value(self, query: str, params: list[Any]) -> Any:
-        """Execute query and fetch single value"""
-        conn = self.get_connection()
-        return await conn.fetchval(query, *params)
-
-    async def execute_query(self, query: str, params: list[Any]) -> str:
-        """Execute query and return result"""
-        conn = self.get_connection()
-        return await conn.execute(query, *params)
-
-
-class EntityMapper[T: BaseModel]:
-    """Composition class for entity mapping operations"""
-
-    def __init__(self, entity_class: type[T]):
-        self.entity_class = entity_class
-
-    def map_row_to_entity(self, row: Any) -> T:
-        """Map database row to entity"""
-        return self.entity_class(**dict(row))
-
-    def map_rows_to_entities(self, rows: list[Any]) -> list[T]:
-        """Map database rows to entities"""
-        return [self.map_row_to_entity(row) for row in rows]
-
-
-class SearchConditionBuilder:
-    """Composition class for building search conditions"""
-
-    @staticmethod
-    def apply_search_conditions(
-        builder: QueryBuilder, search: BaseModel
-    ) -> QueryBuilder:
-        """Apply search conditions to the query builder"""
-        search_dict = {k: v for k, v in search.model_dump().items() if v is not None}
-
-        for field, value in search_dict.items():
-            builder = builder.where(field, value)
-
-        return builder
-
-    @staticmethod
-    def build_order_clause(sort_model: BaseModel | None) -> str:
-        """Build ORDER BY clause from sort model"""
-        if not sort_model:
-            return ""
-
-        sort_dict = {k: v for k, v in sort_model.model_dump().items() if v is not None}
-        if not sort_dict:
-            return ""
-
-        order_parts = []
-        for field, order in sort_dict.items():
-            order_parts.append(f"{field} {order}")
-
-        return ", ".join(order_parts)
 
 
 class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
