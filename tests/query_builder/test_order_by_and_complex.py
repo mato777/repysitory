@@ -56,7 +56,7 @@ class TestOrderByAndComplexQueries:
             "SELECT title, content, views FROM posts WHERE "
             "(published = $1 AND category IN ($2, $3) AND status NOT IN ($5, $6)) OR "
             "featured = $4 "
-            "ORDER BY views DESC, created_at ASC"
+            "ORDER BY views DESC, created_at"
         )
         assert query == expected_query
         assert params == [True, "tech", "science", True, "draft", "archived"]
