@@ -61,7 +61,7 @@ class PostService:
         post = Post(id=uuid4(), title=title, content=content)
         created_post = await self.post_repo.create(post)
 
-        # Update the post in the same transaction using typed update model
+        # Update the post in the same transaction using a typed update model
         update_data = PostUpdate(content=f"{content} [PROCESSED]")
         updated_post = await self.post_repo.update(created_post.id, update_data)
 
