@@ -1,3 +1,4 @@
+import pytest
 import asyncpg
 import pytest_asyncio
 from testcontainers.postgres import PostgresContainer
@@ -5,27 +6,23 @@ from testcontainers.postgres import PostgresContainer
 from src.db_context import DatabaseManager
 
 
-@pytest_asyncio.fixture(scope="session")
-async def postgres_container():
+@pytest.fixture(scope="session")
+def postgres_container():
     """Start a PostgreSQL test container for the session."""
     with PostgresContainer("postgres:17") as postgres:
         yield postgres
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def test_db_pool(request):
+async def test_db_pool(request, postgres_container):
     """Create a database pool connected to the test container for each test.
 
-    Skips DB setup for pure unit tests in tests/query_builder/* to avoid requiring Docker.
+    If a test is marked with `no_db`, skip DB setup for that test.
     """
-    nodeid = getattr(request.node, "nodeid", "")
-    if "tests/query_builder/" in nodeid:
-        # Skip DB setup for query_builder unit tests
+    if request.node.get_closest_marker("no_db") is not None:
+        # Skip DB setup for tests explicitly marked as no_db
         yield None
         return
-
-    # Lazily obtain the postgres_container fixture only when needed
-    postgres_container = request.getfixturevalue("postgres_container")
 
     # Get connection details from the container
     host = postgres_container.get_container_host_ip()
