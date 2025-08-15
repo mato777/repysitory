@@ -21,7 +21,7 @@ dev = [
 ]
 
 [tool.taskipy.tasks]
-test = "pytest --cov=eloquent_py --cov-report=html"
+test = "pytest --cov=src --cov-report=html"
 format = "uv run ruff format --check --diff"
 check = "uv run ruff check"
 
