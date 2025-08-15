@@ -13,8 +13,20 @@ async def postgres_container():
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def test_db_pool(postgres_container):
-    """Create a database pool connected to the test container for each test."""
+async def test_db_pool(request):
+    """Create a database pool connected to the test container for each test.
+
+    Skips DB setup for pure unit tests in tests/query_builder/* to avoid requiring Docker.
+    """
+    nodeid = getattr(request.node, "nodeid", "")
+    if "tests/query_builder/" in nodeid:
+        # Skip DB setup for query_builder unit tests
+        yield None
+        return
+
+    # Lazily obtain the postgres_container fixture only when needed
+    postgres_container = request.getfixturevalue("postgres_container")
+
     # Get connection details from the container
     host = postgres_container.get_container_host_ip()
     port = postgres_container.get_exposed_port(5432)
