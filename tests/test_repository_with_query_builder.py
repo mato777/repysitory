@@ -193,7 +193,7 @@ class TestRepositoryWithQueryBuilder:
         await self.setup_test_data(sample_posts)
 
         # Test ORDER BY
-        ordered_posts = await repository.order_by_asc("title").get()
+        ordered_posts = await repository.order_by("title").get()
         assert len(ordered_posts) == 5
         titles = [post.title for post in ordered_posts]
         assert titles == sorted(titles)

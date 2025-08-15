@@ -85,10 +85,10 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         new_builder = current_builder.where_not_in(field, values)
         return self._clone_with_query_builder(new_builder)
 
-    def order_by(self, clause: str) -> "Repository[T, S, U]":
-        """Add ORDER BY clause"""
+    def order_by(self, field: str) -> "Repository[T, S, U]":
+        """Add ORDER BY ascending for a field (default)."""
         current_builder = self._get_or_create_query_builder()
-        new_builder = current_builder.order_by(clause)
+        new_builder = current_builder.order_by(field)
         return self._clone_with_query_builder(new_builder)
 
     def order_by_asc(self, field: str) -> "Repository[T, S, U]":
@@ -197,10 +197,10 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
             for field, value in search_dict.items():
                 query_repo = query_repo.where(field, value)
 
-        # Add ORDER BY clause if sort is provided
-        order_clause = self.search_builder.build_order_clause(sort)
-        if order_clause:
-            query_repo = query_repo.order_by(order_clause)
+        # Apply ORDER BY if sort is provided (ASC by default, DESC via order_by_desc)
+        query_repo = self._clone_with_query_builder(
+            self.search_builder.apply_sort(query_repo._get_or_create_query_builder(), sort)
+        )
 
         return await query_repo.get()
 

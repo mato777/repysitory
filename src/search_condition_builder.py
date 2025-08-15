@@ -33,3 +33,21 @@ class SearchConditionBuilder:
             order_parts.append(f"{field} {order}")
 
         return ", ".join(order_parts)
+
+    @staticmethod
+    def apply_sort(builder: QueryBuilder, sort_model: BaseModel | None) -> QueryBuilder:
+        """Apply sorting to the builder using order_by (ASC default) and order_by_desc."""
+        if not sort_model:
+            return builder
+
+        sort_dict = {k: v for k, v in sort_model.model_dump().items() if v is not None}
+        if not sort_dict:
+            return builder
+
+        for field, order in sort_dict.items():
+            if str(order).upper() == "DESC":
+                builder = builder.order_by_desc(field)
+            else:
+                builder = builder.order_by(field)
+
+        return builder

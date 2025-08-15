@@ -48,7 +48,7 @@ class TestOrderByAndComplexQueries:
             .where_in("category", ["tech", "science"])
             .or_where("featured", True)
             .where_not_in("status", ["draft", "archived"])
-            .order_by_desc("views").order_by_asc("created_at")
+            .order_by_desc("views").order_by("created_at")
             .build()
         )
 

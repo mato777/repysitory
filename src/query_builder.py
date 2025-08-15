@@ -260,11 +260,11 @@ class QueryBuilder:
         """Add a grouped OR WHERE clause using a function"""
         return self._add_group_condition(group_function, is_or=True)
 
-    def order_by(self, clause: str) -> "QueryBuilder":
-        """Add ORDER BY clause"""
+    def order_by(self, field: str) -> "QueryBuilder":
+        """Add ORDER BY ascending for a field (default). Chain to add multiple fields."""
         new_builder = self._clone()
-        new_builder.order_by_parts = []
-        new_builder.order_by_clause = f" ORDER BY {clause}"
+        new_builder.order_by_clause = ""
+        new_builder.order_by_parts.append(f"{field}")
         return new_builder
 
     def order_by_asc(self, field: str) -> "QueryBuilder":

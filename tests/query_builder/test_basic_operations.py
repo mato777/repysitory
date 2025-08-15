@@ -69,7 +69,7 @@ class TestBasicOperations:
         query1, params1 = (
             builder1.select("title")
             .where("id", str(post_id))
-            .order_by_asc("created_at")
+            .order_by("created_at")
             .build()
         )
 
@@ -78,7 +78,7 @@ class TestBasicOperations:
         query2, params2 = (
             builder2.where("id", str(post_id))
             .select("title")
-            .order_by_asc("created_at")
+            .order_by("created_at")
             .build()
         )
 
@@ -94,7 +94,7 @@ class TestBasicOperations:
         query, params = (
             builder.select("title")
             .select("content")  # This should override the previous select
-            .order_by_asc("created_at")
+            .order_by("created_at")
             .order_by_desc("title")  # This should override the previous order_by
             .build()
         )
@@ -105,7 +105,7 @@ class TestBasicOperations:
     def test_empty_where_conditions(self):
         """Test that empty WHERE conditions don't break the query"""
         builder = QueryBuilder("posts")
-        query, params = builder.select("*").order_by_asc("id").build()
+        query, params = builder.select("*").order_by("id").build()
 
         assert query == "SELECT * FROM posts ORDER BY id"
         assert params == []
@@ -113,7 +113,7 @@ class TestBasicOperations:
     def test_string_representation(self):
         """Test the string representation of QueryBuilder"""
         builder = QueryBuilder("posts")
-        builder = builder.where("id", "123").order_by_asc("title")
+        builder = builder.where("id", "123").order_by("title")
 
         str_repr = str(builder)
         assert "Query: SELECT * FROM posts WHERE id = $1 ORDER BY title" in str_repr
