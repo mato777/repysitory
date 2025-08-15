@@ -95,11 +95,11 @@ class TestBasicOperations:
             builder.select("title")
             .select("content")  # This should override the previous select
             .order_by("created_at")
-            .order_by("title DESC")  # This should override the previous order_by
+            .order_by_desc("title")  # This should override the previous order_by
             .build()
         )
 
-        assert query == "SELECT content FROM posts ORDER BY title DESC"
+        assert query == "SELECT content FROM posts ORDER BY created_at, title DESC"
         assert params == []
 
     def test_empty_where_conditions(self):
@@ -132,7 +132,7 @@ class TestBasicOperations:
             builder.select("title, content")
             .where("published", True)
             .or_where_in("category", ["tech", "science"])
-            .order_by("created_at DESC")
+            .order_by_desc("created_at")
             .to_sql()
         )
 

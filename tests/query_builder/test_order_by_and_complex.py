@@ -13,7 +13,7 @@ class TestOrderByAndComplexQueries:
     def test_order_by_clause(self):
         """Test SELECT with ORDER BY"""
         builder = QueryBuilder("posts")
-        query, params = builder.order_by("created_at DESC").build()
+        query, params = builder.order_by_desc("created_at").build()
 
         assert query == "SELECT * FROM posts ORDER BY created_at DESC"
         assert params == []
@@ -27,7 +27,7 @@ class TestOrderByAndComplexQueries:
             builder.select("title, content, created_at")
             .where("id", str(post_id))
             .where("status", status)
-            .order_by("created_at DESC")
+            .order_by_desc("created_at")
             .build()
         )
 
@@ -48,7 +48,7 @@ class TestOrderByAndComplexQueries:
             .where_in("category", ["tech", "science"])
             .or_where("featured", True)
             .where_not_in("status", ["draft", "archived"])
-            .order_by("views DESC, created_at ASC")
+            .order_by_desc("views").order_by("created_at")
             .build()
         )
 
@@ -56,7 +56,7 @@ class TestOrderByAndComplexQueries:
             "SELECT title, content, views FROM posts WHERE "
             "(published = $1 AND category IN ($2, $3) AND status NOT IN ($5, $6)) OR "
             "featured = $4 "
-            "ORDER BY views DESC, created_at ASC"
+            "ORDER BY views DESC, created_at"
         )
         assert query == expected_query
         assert params == [True, "tech", "science", True, "draft", "archived"]
@@ -76,7 +76,7 @@ class TestOrderByAndComplexQueries:
             .where("user_id", "123")
             .where_group(status_group)
             .or_where_group(category_group)
-            .order_by("created_at DESC")
+            .order_by_desc("created_at")
             .build()
         )
 
@@ -106,7 +106,7 @@ class TestOrderByAndComplexQueries:
             .where_in("category_id", [1, 2, 3, 5])
             .where_not_in("status", ["draft", "archived"])
             .where_group(visibility_conditions)
-            .order_by("featured DESC, created_at DESC")
+            .order_by_desc("featured").order_by_desc("created_at")
             .build()
         )
 

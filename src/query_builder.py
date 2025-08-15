@@ -23,6 +23,7 @@ class QueryBuilder:
         self.or_where_conditions: list[str] = []
         self.params: list[Any] = []
         self.order_by_clause = ""
+        self.order_by_parts: list[str] = []
         self.limit_count: int | None = None
         self.offset_count: int | None = None
 
@@ -34,6 +35,7 @@ class QueryBuilder:
         new_builder.or_where_conditions = self.or_where_conditions.copy()
         new_builder.params = self.params.copy()
         new_builder.order_by_clause = self.order_by_clause
+        new_builder.order_by_parts = self.order_by_parts.copy()
         new_builder.limit_count = self.limit_count
         new_builder.offset_count = self.offset_count
         return new_builder
@@ -258,10 +260,25 @@ class QueryBuilder:
         """Add a grouped OR WHERE clause using a function"""
         return self._add_group_condition(group_function, is_or=True)
 
-    def order_by(self, clause: str) -> "QueryBuilder":
-        """Add ORDER BY clause"""
+    def order_by(self, field: str) -> "QueryBuilder":
+        """Add ORDER BY ascending for a field (default). Chain to add multiple fields."""
         new_builder = self._clone()
-        new_builder.order_by_clause = f" ORDER BY {clause}"
+        new_builder.order_by_clause = ""
+        new_builder.order_by_parts.append(f"{field}")
+        return new_builder
+
+    def order_by_asc(self, field: str) -> "QueryBuilder":
+        """Add an ORDER BY ... ASC on the given field. Can be chained to add multiple fields."""
+        new_builder = self._clone()
+        new_builder.order_by_clause = ""
+        new_builder.order_by_parts.append(f"{field}")
+        return new_builder
+
+    def order_by_desc(self, field: str) -> "QueryBuilder":
+        """Add an ORDER BY ... DESC on the given field. Can be chained to add multiple fields."""
+        new_builder = self._clone()
+        new_builder.order_by_clause = ""
+        new_builder.order_by_parts.append(f"{field} DESC")
         return new_builder
 
     def limit(self, count: int) -> "QueryBuilder":
@@ -326,7 +343,9 @@ class QueryBuilder:
             else:
                 query_parts.append(f"WHERE {' OR '.join(where_parts)}")
 
-        if self.order_by_clause:
+        if self.order_by_parts:
+            query_parts.append(f"ORDER BY {', '.join(self.order_by_parts)}")
+        elif self.order_by_clause:
             query_parts.append(self.order_by_clause.strip())
 
         if self.limit_count is not None:

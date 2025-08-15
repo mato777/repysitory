@@ -37,7 +37,7 @@ class TestPaginationFeatures:
         builder = QueryBuilder("posts")
         query, params = (
             builder.where("published", True)
-            .order_by("created_at DESC")
+            .order_by_desc("created_at")
             .limit(5)
             .offset(10)
             .build()
@@ -89,7 +89,7 @@ class TestPaginationFeatures:
             builder.select("id, title, content")
             .where("published", True)
             .where_in("category", ["tech", "science"])
-            .order_by("created_at DESC")
+            .order_by_desc("created_at")
             .paginate(page=2, per_page=15)
             .build()
         )
