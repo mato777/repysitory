@@ -58,25 +58,25 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         return self._clone_with_query_builder(new_builder)
 
     def where(
-        self, field: str, arg2: Any, arg3: Any | None = None
+        self, field: str, *args: Any
     ) -> "Repository[T, S, U]":
         """Add a WHERE condition.
 
         Supports both: where(field, value) and where(field, operator, value)
         """
         current_builder = self._get_or_create_query_builder()
-        new_builder = current_builder.where(field, arg2, arg3)
+        new_builder = current_builder.where(field, *args)
         return self._clone_with_query_builder(new_builder)
 
     def or_where(
-        self, field: str, arg2: Any, arg3: Any | None = None
+        self, field: str, *args: Any
     ) -> "Repository[T, S, U]":
         """Add an OR WHERE condition.
 
         Supports both: or_where(field, value) and or_where(field, operator, value)
         """
         current_builder = self._get_or_create_query_builder()
-        new_builder = current_builder.or_where(field, arg2, arg3)
+        new_builder = current_builder.or_where(field, *args)
         return self._clone_with_query_builder(new_builder)
 
     def where_in(self, field: str, values: list) -> "Repository[T, S, U]":
