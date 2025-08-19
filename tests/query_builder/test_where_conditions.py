@@ -112,7 +112,7 @@ class TestWhereConditions:
         query, params = (
             builder.where("id", "123")
             .where_multiple(conditions)
-            .where("title", "My Post", "!=")
+            .where("title", "!=", "My Post")
             .build()
         )
 
