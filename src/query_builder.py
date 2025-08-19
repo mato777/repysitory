@@ -152,8 +152,7 @@ class QueryBuilder:
     def where(
         self,
         field_or_function: str | Callable[["QueryBuilder"], "QueryBuilder"],
-        arg2: Any = None,
-        arg3: Any | None = None,
+        *args: Any,
     ) -> "QueryBuilder":
         """Add a WHERE condition or grouped WHERE clause.
 
@@ -167,19 +166,19 @@ class QueryBuilder:
             return self.where_group(field_or_function)
 
         field = field_or_function
-        # Strict 3-arg style: (field, operator, value)
-        if arg3 is not None:
-            operator = arg2
-            value = arg3
+        # Determine argument style by length to support value=None in 3-arg form
+        if len(args) == 2:
+            operator, value = args
             return self._add_condition(field, value, operator, is_or=False)
-        # Two-arg style: (field, value) -> defaults to '='
-        return self._add_condition(field, arg2, "=", is_or=False)
+        if len(args) == 1:
+            value = args[0]
+            return self._add_condition(field, value, "=", is_or=False)
+        raise TypeError("where() expects (field, value) or (field, operator, value)")
 
     def or_where(
         self,
         field_or_function: str | Callable[["QueryBuilder"], "QueryBuilder"],
-        arg2: Any = None,
-        arg3: Any | None = None,
+        *args: Any,
     ) -> "QueryBuilder":
         """Add an OR WHERE condition or grouped OR WHERE clause.
 
@@ -191,11 +190,13 @@ class QueryBuilder:
             return self.or_where_group(field_or_function)
 
         field = field_or_function
-        if arg3 is not None:
-            operator = arg2
-            value = arg3
+        if len(args) == 2:
+            operator, value = args
             return self._add_condition(field, value, operator, is_or=True)
-        return self._add_condition(field, arg2, "=", is_or=True)
+        if len(args) == 1:
+            value = args[0]
+            return self._add_condition(field, value, "=", is_or=True)
+        raise TypeError("or_where() expects (field, value) or (field, operator, value)")
 
     def where_multiple(self, conditions: list[tuple[str, Any, str]]) -> "QueryBuilder":
         """Add multiple WHERE conditions.
