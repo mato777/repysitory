@@ -152,59 +152,184 @@ class QueryBuilder:
     def where(
         self,
         field_or_function: str | Callable[["QueryBuilder"], "QueryBuilder"],
-        value: Any = None,
-        operator: str = "=",
+        arg2: Any = None,
+        arg3: Any | None = None,
     ) -> "QueryBuilder":
-        """Add a WHERE condition or grouped WHERE clause"""
+        """Add a WHERE condition or grouped WHERE clause.
+
+        Supports both of the following call styles:
+        - where(field, value)                      -> operator defaults to '='
+        - where(field, operator, value)            -> explicit operator in second place
+
+        Grouped conditions via function remain supported: where(lambda qb: ...)
+        """
         if callable(field_or_function):
             return self.where_group(field_or_function)
-        return self._add_condition(field_or_function, value, operator, is_or=False)
+
+        # Detect which calling convention is used
+        field = field_or_function
+
+        # Three-argument style: (field, operator, value)
+        if arg3 is not None:
+            potential_operator = arg2
+            value = arg3
+
+            # Heuristic: if second arg is a string and looks like an operator, treat it as operator
+            recognized_operators = {
+                "=",
+                "!=",
+                "<>",
+                ">",
+                "<",
+                ">=",
+                "<=",
+                "LIKE",
+                "ILIKE",
+            }
+            if isinstance(potential_operator, str) and potential_operator.upper() in recognized_operators:
+                operator = potential_operator
+                return self._add_condition(field, value, operator, is_or=False)
+
+            # Fallback to backward-compatible ordering: (field, value, operator)
+            value = arg2
+            operator = arg3 if isinstance(arg3, str) else "="
+            return self._add_condition(field, value, operator, is_or=False)
+
+        # Two-argument style: (field, value) -> defaults to '='
+        return self._add_condition(field, arg2, "=", is_or=False)
 
     def or_where(
         self,
         field_or_function: str | Callable[["QueryBuilder"], "QueryBuilder"],
-        value: Any = None,
-        operator: str = "=",
+        arg2: Any = None,
+        arg3: Any | None = None,
     ) -> "QueryBuilder":
-        """Add an OR WHERE condition or grouped OR WHERE clause"""
+        """Add an OR WHERE condition or grouped OR WHERE clause.
+
+        Supports both of the following call styles:
+        - or_where(field, value)                   -> operator defaults to '='
+        - or_where(field, operator, value)         -> explicit operator in second place
+        """
         if callable(field_or_function):
             return self.or_where_group(field_or_function)
-        return self._add_condition(field_or_function, value, operator, is_or=True)
+
+        field = field_or_function
+
+        if arg3 is not None:
+            potential_operator = arg2
+            value = arg3
+            recognized_operators = {
+                "=",
+                "!=",
+                "<>",
+                ">",
+                "<",
+                ">=",
+                "<=",
+                "LIKE",
+                "ILIKE",
+            }
+            if isinstance(potential_operator, str) and potential_operator.upper() in recognized_operators:
+                operator = potential_operator
+                return self._add_condition(field, value, operator, is_or=True)
+
+            # Fallback to backward-compatible ordering: (field, value, operator)
+            value = arg2
+            operator = arg3 if isinstance(arg3, str) else "="
+            return self._add_condition(field, value, operator, is_or=True)
+
+        return self._add_condition(field, arg2, "=", is_or=True)
 
     def where_multiple(self, conditions: list[tuple[str, Any, str]]) -> "QueryBuilder":
-        """Add multiple WHERE conditions from a list of (field, value, operator) tuples"""
+        """Add multiple WHERE conditions.
+
+        Accepts tuples in either order for readability:
+        - (field, operator, value)
+        - (field, value, operator)
+        """
         new_builder = self._clone()
-        for field, value, operator in conditions:
-            new_builder = new_builder._add_condition(
-                field, value, operator, is_or=False
-            )
+        recognized_operators = {
+            "=",
+            "!=",
+            "<>",
+            ">",
+            "<",
+            ">=",
+            "<=",
+            "LIKE",
+            "ILIKE",
+        }
+        for condition in conditions:
+            field, second, third = condition
+            if isinstance(second, str) and second.upper() in recognized_operators:
+                operator = second
+                value = third
+            else:
+                value = second
+                operator = third
+            new_builder = new_builder._add_condition(field, value, operator, is_or=False)
         return new_builder
 
     def or_where_multiple(
         self, conditions: list[tuple[str, Any, str]]
     ) -> "QueryBuilder":
-        """Add multiple OR WHERE conditions from a list of (field, value, operator) tuples"""
+        """Add multiple OR WHERE conditions.
+
+        Accepts tuples in either order for readability:
+        - (field, operator, value)
+        - (field, value, operator)
+        """
         new_builder = self._clone()
-        for field, value, operator in conditions:
+        recognized_operators = {
+            "=",
+            "!=",
+            "<>",
+            ">",
+            "<",
+            ">=",
+            "<=",
+            "LIKE",
+            "ILIKE",
+        }
+        for condition in conditions:
+            field, second, third = condition
+            if isinstance(second, str) and second.upper() in recognized_operators:
+                operator = second
+                value = third
+            else:
+                value = second
+                operator = third
             new_builder = new_builder._add_condition(field, value, operator, is_or=True)
         return new_builder
 
     def where_any(
         self, conditions: tuple[str, Any, str] | list[tuple[str, Any, str]]
     ) -> "QueryBuilder":
-        """Add WHERE condition(s) - accepts either a single tuple or list of tuples"""
+        """Add WHERE condition(s) - accepts either a single tuple or list of tuples.
+
+        Supports tuple orders (field, operator, value) or (field, value, operator).
+        """
         if isinstance(conditions, tuple):
-            field, value, operator = conditions
-            return self.where(field, value, operator)
+            field, second, third = conditions
+            recognized_operators = {"=", "!=", "<>", ">", "<", ">=", "<=", "LIKE", "ILIKE"}
+            if isinstance(second, str) and second.upper() in recognized_operators:
+                return self.where(field, second, third)
+            return self.where(field, second, third)
         return self.where_multiple(conditions)
 
     def or_where_any(
         self, conditions: tuple[str, Any, str] | list[tuple[str, Any, str]]
     ) -> "QueryBuilder":
-        """Add OR WHERE condition(s) - accepts either a single tuple or list of tuples"""
+        """Add OR WHERE condition(s) - accepts either a single tuple or list of tuples.
+
+        Supports tuple orders (field, operator, value) or (field, value, operator).
+        """
         if isinstance(conditions, tuple):
-            field, value, operator = conditions
-            return self.or_where(field, value, operator)
+            field, second, third = conditions
+            recognized_operators = {"=", "!=", "<>", ">", "<", ">=", "<=", "LIKE", "ILIKE"}
+            if isinstance(second, str) and second.upper() in recognized_operators:
+                return self.or_where(field, second, third)
+            return self.or_where(field, second, third)
         return self.or_where_multiple(conditions)
 
     def where_in(self, field: str, values: Any | list[Any]) -> "QueryBuilder":
