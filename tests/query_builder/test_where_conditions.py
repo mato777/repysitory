@@ -35,9 +35,9 @@ class TestWhereConditions:
         """Test WHERE conditions with different operators"""
         builder = QueryBuilder("posts")
         query, params = (
-            builder.where("age", 18, ">")
-            .where("status", "draft", "!=")
-            .where("price", 100, "<=")
+            builder.where("age", ">", 18)
+            .where("status", "!=", "draft")
+            .where("price", "<=", 100)
             .build()
         )
 
@@ -52,8 +52,8 @@ class TestWhereConditions:
         builder = QueryBuilder("posts")
         query, params = (
             builder.where("user_id", "user123")
-            .where("created_at", "2023-01-01", ">")
-            .where("status", "published", "!=")
+            .where("created_at", ">", "2023-01-01")
+            .where("status", "!=", "published")
             .build()
         )
 
@@ -68,9 +68,9 @@ class TestWhereConditions:
         """Test WHERE with multiple conditions using where_multiple method"""
         builder = QueryBuilder("posts")
         conditions = [
-            ("id", "123", "="),
-            ("status", "published", "="),
-            ("age", 18, ">"),
+            ("id", "=", "123"),
+            ("status", "=", "published"),
+            ("age", ">", 18),
         ]
         query, params = builder.where_multiple(conditions).build()
 
@@ -83,7 +83,7 @@ class TestWhereConditions:
     def test_where_any_single_condition(self):
         """Test where_any with a single condition tuple"""
         builder = QueryBuilder("posts")
-        condition = ("status", "draft", "!=")
+        condition = ("status", "!=", "draft")
         query, params = builder.where_any(condition).build()
 
         assert query == "SELECT * FROM posts WHERE status != $1"
@@ -93,9 +93,9 @@ class TestWhereConditions:
         """Test where_any with a list of condition tuples"""
         builder = QueryBuilder("posts")
         conditions = [
-            ("user_id", "user123", "="),
-            ("created_at", "2023-01-01", ">"),
-            ("price", 100, "<="),
+            ("user_id", "=", "user123"),
+            ("created_at", ">", "2023-01-01"),
+            ("price", "<=", 100),
         ]
         query, params = builder.where_any(conditions).build()
 
@@ -108,7 +108,7 @@ class TestWhereConditions:
     def test_mixed_where_methods(self):
         """Test mixing different where methods"""
         builder = QueryBuilder("posts")
-        conditions = [("status", "published", "="), ("age", 18, ">=")]
+        conditions = [("status", "=", "published"), ("age", ">=", 18)]
         query, params = (
             builder.where("id", "123")
             .where_multiple(conditions)
@@ -128,9 +128,9 @@ class TestWhereConditions:
         builder = QueryBuilder("posts")
         # Test with tuples that assume equality by using a helper method
         conditions = [
-            ("id", "123", "="),
-            ("status", "published", "="),
-            ("category_id", "456", "="),
+            ("id", "=", "123"),
+            ("status", "=", "published"),
+            ("category_id", "=", "456"),
         ]
         query, params = builder.where_multiple(conditions).build()
 

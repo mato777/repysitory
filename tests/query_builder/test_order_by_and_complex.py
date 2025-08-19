@@ -95,14 +95,14 @@ class TestOrderByAndComplexQueries:
         def visibility_conditions(query):
             return (
                 query.where("published", True)
-                .where("publish_date", "2023-01-01", "<=")
+                .where("publish_date", "<=", "2023-01-01")
                 .or_where("featured", True)
             )
 
         builder = QueryBuilder("posts")
         query, params = (
             builder.select("id, title, excerpt, author_id, created_at")
-            .where("deleted_at", None, "IS")
+            .where("deleted_at", "IS", None)
             .where_in("category_id", [1, 2, 3, 5])
             .where_not_in("status", ["draft", "archived"])
             .where_group(visibility_conditions)

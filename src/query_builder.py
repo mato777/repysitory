@@ -166,36 +166,13 @@ class QueryBuilder:
         if callable(field_or_function):
             return self.where_group(field_or_function)
 
-        # Detect which calling convention is used
         field = field_or_function
-
-        # Three-argument style: (field, operator, value)
+        # Strict 3-arg style: (field, operator, value)
         if arg3 is not None:
-            potential_operator = arg2
+            operator = arg2
             value = arg3
-
-            # Heuristic: if second arg is a string and looks like an operator, treat it as operator
-            recognized_operators = {
-                "=",
-                "!=",
-                "<>",
-                ">",
-                "<",
-                ">=",
-                "<=",
-                "LIKE",
-                "ILIKE",
-            }
-            if isinstance(potential_operator, str) and potential_operator.upper() in recognized_operators:
-                operator = potential_operator
-                return self._add_condition(field, value, operator, is_or=False)
-
-            # Fallback to backward-compatible ordering: (field, value, operator)
-            value = arg2
-            operator = arg3 if isinstance(arg3, str) else "="
             return self._add_condition(field, value, operator, is_or=False)
-
-        # Two-argument style: (field, value) -> defaults to '='
+        # Two-arg style: (field, value) -> defaults to '='
         return self._add_condition(field, arg2, "=", is_or=False)
 
     def or_where(
@@ -214,59 +191,20 @@ class QueryBuilder:
             return self.or_where_group(field_or_function)
 
         field = field_or_function
-
         if arg3 is not None:
-            potential_operator = arg2
+            operator = arg2
             value = arg3
-            recognized_operators = {
-                "=",
-                "!=",
-                "<>",
-                ">",
-                "<",
-                ">=",
-                "<=",
-                "LIKE",
-                "ILIKE",
-            }
-            if isinstance(potential_operator, str) and potential_operator.upper() in recognized_operators:
-                operator = potential_operator
-                return self._add_condition(field, value, operator, is_or=True)
-
-            # Fallback to backward-compatible ordering: (field, value, operator)
-            value = arg2
-            operator = arg3 if isinstance(arg3, str) else "="
             return self._add_condition(field, value, operator, is_or=True)
-
         return self._add_condition(field, arg2, "=", is_or=True)
 
     def where_multiple(self, conditions: list[tuple[str, Any, str]]) -> "QueryBuilder":
         """Add multiple WHERE conditions.
 
-        Accepts tuples in either order for readability:
-        - (field, operator, value)
-        - (field, value, operator)
+        Expects tuples in the form: (field, operator, value)
         """
         new_builder = self._clone()
-        recognized_operators = {
-            "=",
-            "!=",
-            "<>",
-            ">",
-            "<",
-            ">=",
-            "<=",
-            "LIKE",
-            "ILIKE",
-        }
         for condition in conditions:
-            field, second, third = condition
-            if isinstance(second, str) and second.upper() in recognized_operators:
-                operator = second
-                value = third
-            else:
-                value = second
-                operator = third
+            field, operator, value = condition
             new_builder = new_builder._add_condition(field, value, operator, is_or=False)
         return new_builder
 
@@ -275,30 +213,11 @@ class QueryBuilder:
     ) -> "QueryBuilder":
         """Add multiple OR WHERE conditions.
 
-        Accepts tuples in either order for readability:
-        - (field, operator, value)
-        - (field, value, operator)
+        Expects tuples in the form: (field, operator, value)
         """
         new_builder = self._clone()
-        recognized_operators = {
-            "=",
-            "!=",
-            "<>",
-            ">",
-            "<",
-            ">=",
-            "<=",
-            "LIKE",
-            "ILIKE",
-        }
         for condition in conditions:
-            field, second, third = condition
-            if isinstance(second, str) and second.upper() in recognized_operators:
-                operator = second
-                value = third
-            else:
-                value = second
-                operator = third
+            field, operator, value = condition
             new_builder = new_builder._add_condition(field, value, operator, is_or=True)
         return new_builder
 
@@ -307,14 +226,11 @@ class QueryBuilder:
     ) -> "QueryBuilder":
         """Add WHERE condition(s) - accepts either a single tuple or list of tuples.
 
-        Supports tuple orders (field, operator, value) or (field, value, operator).
+        Expects tuple order: (field, operator, value)
         """
         if isinstance(conditions, tuple):
-            field, second, third = conditions
-            recognized_operators = {"=", "!=", "<>", ">", "<", ">=", "<=", "LIKE", "ILIKE"}
-            if isinstance(second, str) and second.upper() in recognized_operators:
-                return self.where(field, second, third)
-            return self.where(field, second, third)
+            field, operator, value = conditions
+            return self.where(field, operator, value)
         return self.where_multiple(conditions)
 
     def or_where_any(
@@ -322,14 +238,11 @@ class QueryBuilder:
     ) -> "QueryBuilder":
         """Add OR WHERE condition(s) - accepts either a single tuple or list of tuples.
 
-        Supports tuple orders (field, operator, value) or (field, value, operator).
+        Expects tuple order: (field, operator, value)
         """
         if isinstance(conditions, tuple):
-            field, second, third = conditions
-            recognized_operators = {"=", "!=", "<>", ">", "<", ">=", "<=", "LIKE", "ILIKE"}
-            if isinstance(second, str) and second.upper() in recognized_operators:
-                return self.or_where(field, second, third)
-            return self.or_where(field, second, third)
+            field, operator, value = conditions
+            return self.or_where(field, operator, value)
         return self.or_where_multiple(conditions)
 
     def where_in(self, field: str, values: Any | list[Any]) -> "QueryBuilder":

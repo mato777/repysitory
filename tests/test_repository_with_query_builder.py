@@ -143,7 +143,7 @@ class TestRepositoryWithQueryBuilder:
         await self.setup_test_data(sample_posts)
 
         # Test with different operators
-        not_published = await repository.where("published", False, "=").get()
+        not_published = await repository.where("published", "=", False).get()
         assert len(not_published) == 2
         assert all(not post.published for post in not_published)
 

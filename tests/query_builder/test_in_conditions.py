@@ -77,7 +77,7 @@ class TestInConditions:
             builder.where("published", True)
             .where_in("category", ["tech", "science"])
             .where_not_in("status", ["draft", "archived"])
-            .where("views", 1000, ">")
+            .where("views", ">", 1000)
             .build()
         )
 
@@ -114,7 +114,7 @@ class TestInConditions:
         query, params = (
             builder.where("user_id", "user123")
             .where_in("category", ["tech", "science", "health"])
-            .where("created_at", "2023-01-01", ">")
+            .where("created_at", ">", "2023-01-01")
             .where_not_in("status", ["draft", "archived"])
             .build()
         )
