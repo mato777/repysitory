@@ -51,9 +51,9 @@ class TestOrWhereConditions:
         """Test or_where_multiple with list of conditions"""
         builder = QueryBuilder("posts")
         conditions = [
-            ("category", "tech", "="),
-            ("category", "science", "="),
-            ("priority", "high", "="),
+            ("category", "=", "tech"),
+            ("category", "=", "science"),
+            ("priority", "=", "high"),
         ]
         query, params = builder.or_where_multiple(conditions).build()
 
@@ -64,7 +64,7 @@ class TestOrWhereConditions:
     def test_or_where_any_single_condition(self):
         """Test or_where_any with a single condition tuple"""
         builder = QueryBuilder("posts")
-        condition = ("status", "archived", "!=")
+        condition = ("status", "!=", "archived")
         query, params = builder.or_where_any(condition).build()
 
         assert query == "SELECT * FROM posts WHERE status != $1"
@@ -74,9 +74,9 @@ class TestOrWhereConditions:
         """Test or_where_any with multiple condition tuples"""
         builder = QueryBuilder("posts")
         conditions = [
-            ("views", 1000, ">"),
-            ("likes", 100, ">="),
-            ("featured", True, "="),
+            ("views", ">", 1000),
+            ("likes", ">=", 100),
+            ("featured", "=", True),
         ]
         query, params = builder.or_where_any(conditions).build()
 
@@ -93,11 +93,11 @@ class TestOrWhereConditions:
             builder.where("user_id", "123")
             .where("published", True)
             .where_multiple(
-                [("created_at", "2023-01-01", ">"), ("updated_at", "2023-06-01", "<")]
+                [("created_at", ">", "2023-01-01"), ("updated_at", "<", "2023-06-01")]
             )
-            .or_where("status", "featured")
+            .or_where("status", "=", "featured")
             .or_where_multiple(
-                [("priority", "urgent", "="), ("category", "breaking", "=")]
+                [("priority", "=", "urgent"), ("category", "=", "breaking")]
             )
             .build()
         )

@@ -152,59 +152,98 @@ class QueryBuilder:
     def where(
         self,
         field_or_function: str | Callable[["QueryBuilder"], "QueryBuilder"],
-        value: Any = None,
-        operator: str = "=",
+        *args: Any,
     ) -> "QueryBuilder":
-        """Add a WHERE condition or grouped WHERE clause"""
+        """Add a WHERE condition or grouped WHERE clause.
+
+        Supports both of the following call styles:
+        - where(field, value)                      -> operator defaults to '='
+        - where(field, operator, value)            -> explicit operator in second place
+
+        Grouped conditions via function remain supported: where(lambda qb: ...)
+        """
         if callable(field_or_function):
             return self.where_group(field_or_function)
-        return self._add_condition(field_or_function, value, operator, is_or=False)
+
+        field = field_or_function
+        # Determine argument style by length to support value=None in 3-arg form
+        if len(args) == 2:
+            operator, value = args
+            return self._add_condition(field, value, operator, is_or=False)
+        if len(args) == 1:
+            value = args[0]
+            return self._add_condition(field, value, "=", is_or=False)
+        raise TypeError("where() expects (field, value) or (field, operator, value)")
 
     def or_where(
         self,
         field_or_function: str | Callable[["QueryBuilder"], "QueryBuilder"],
-        value: Any = None,
-        operator: str = "=",
+        *args: Any,
     ) -> "QueryBuilder":
-        """Add an OR WHERE condition or grouped OR WHERE clause"""
+        """Add an OR WHERE condition or grouped OR WHERE clause.
+
+        Supports both of the following call styles:
+        - or_where(field, value)                   -> operator defaults to '='
+        - or_where(field, operator, value)         -> explicit operator in second place
+        """
         if callable(field_or_function):
             return self.or_where_group(field_or_function)
-        return self._add_condition(field_or_function, value, operator, is_or=True)
+
+        field = field_or_function
+        if len(args) == 2:
+            operator, value = args
+            return self._add_condition(field, value, operator, is_or=True)
+        if len(args) == 1:
+            value = args[0]
+            return self._add_condition(field, value, "=", is_or=True)
+        raise TypeError("or_where() expects (field, value) or (field, operator, value)")
 
     def where_multiple(self, conditions: list[tuple[str, Any, str]]) -> "QueryBuilder":
-        """Add multiple WHERE conditions from a list of (field, value, operator) tuples"""
+        """Add multiple WHERE conditions.
+
+        Expects tuples in the form: (field, operator, value)
+        """
         new_builder = self._clone()
-        for field, value, operator in conditions:
-            new_builder = new_builder._add_condition(
-                field, value, operator, is_or=False
-            )
+        for condition in conditions:
+            field, operator, value = condition
+            new_builder = new_builder._add_condition(field, value, operator, is_or=False)
         return new_builder
 
     def or_where_multiple(
         self, conditions: list[tuple[str, Any, str]]
     ) -> "QueryBuilder":
-        """Add multiple OR WHERE conditions from a list of (field, value, operator) tuples"""
+        """Add multiple OR WHERE conditions.
+
+        Expects tuples in the form: (field, operator, value)
+        """
         new_builder = self._clone()
-        for field, value, operator in conditions:
+        for condition in conditions:
+            field, operator, value = condition
             new_builder = new_builder._add_condition(field, value, operator, is_or=True)
         return new_builder
 
     def where_any(
         self, conditions: tuple[str, Any, str] | list[tuple[str, Any, str]]
     ) -> "QueryBuilder":
-        """Add WHERE condition(s) - accepts either a single tuple or list of tuples"""
+        """Add WHERE condition(s) - accepts either a single tuple or list of tuples.
+
+        Expects tuple order: (field, operator, value)
+        """
         if isinstance(conditions, tuple):
-            field, value, operator = conditions
-            return self.where(field, value, operator)
+            field, operator, value = conditions
+            return self.where(field, operator, value)
         return self.where_multiple(conditions)
 
     def or_where_any(
         self, conditions: tuple[str, Any, str] | list[tuple[str, Any, str]]
     ) -> "QueryBuilder":
-        """Add OR WHERE condition(s) - accepts either a single tuple or list of tuples"""
+        """Add OR WHERE condition(s) - accepts either a single tuple or list of tuples.
+
+        Expects tuple order: (field, operator, value)
+        """
         if isinstance(conditions, tuple):
-            field, value, operator = conditions
-            return self.or_where(field, value, operator)
+            field, operator, value = conditions
+            return self.or_where(field, operator, value)
         return self.or_where_multiple(conditions)
 
     def where_in(self, field: str, values: Any | list[Any]) -> "QueryBuilder":
