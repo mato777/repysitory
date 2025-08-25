@@ -37,6 +37,20 @@ async def test_db_pool(postgres_container):
             );
         """
         )
+        # Ensure schema-qualified table exists for schema tests
+        await conn.execute(
+            """
+            CREATE SCHEMA IF NOT EXISTS app;
+            CREATE TABLE IF NOT EXISTS app.posts (
+                id UUID PRIMARY KEY,
+                title VARCHAR(255) NOT NULL,
+                content TEXT NOT NULL,
+                published BOOLEAN NOT NULL DEFAULT FALSE,
+                category VARCHAR(100),
+                author_id UUID
+            );
+        """
+        )
 
     # Add pool to DatabaseManager
     await DatabaseManager.add_pool("test", pool)
@@ -45,6 +59,7 @@ async def test_db_pool(postgres_container):
 
     async with pool.acquire() as conn:
         await conn.execute("TRUNCATE TABLE posts;")
+        await conn.execute("TRUNCATE TABLE app.posts;")
 
     # Cleanup: close the pool after each test
     await pool.close()

@@ -22,11 +22,14 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         search_class: type[S],
         update_class: type[U],
         table_name: str,
+        schema: str | None = None,
     ):
         self.entity_class = entity_class
         self.search_class = search_class
         self.update_class = update_class
         self.table_name = table_name
+        self.schema = schema
+        self._qualified_table_name = f"{schema}.{table_name}" if schema else table_name
         self._query_builder: QueryBuilder | None = None
 
         # Composition: Inject dependencies
@@ -37,7 +40,7 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
     def _get_or_create_query_builder(self) -> QueryBuilder:
         """Get existing query builder or create a new one"""
         if self._query_builder is None:
-            return QueryBuilder(self.table_name)
+            return QueryBuilder(self._qualified_table_name)
         return self._query_builder
 
     def _clone_with_query_builder(
@@ -45,7 +48,11 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
     ) -> "Repository[T, S, U]":
         """Create a new repository instance with the given query builder"""
         new_repo = Repository(
-            self.entity_class, self.search_class, self.update_class, self.table_name
+            self.entity_class,
+            self.search_class,
+            self.update_class,
+            self.table_name,
+            self.schema,
         )
         new_repo._query_builder = query_builder
         return new_repo
@@ -57,9 +64,7 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         new_builder = current_builder.select(fields)
         return self._clone_with_query_builder(new_builder)
 
-    def where(
-        self, field: str, *args: Any
-    ) -> "Repository[T, S, U]":
+    def where(self, field: str, *args: Any) -> "Repository[T, S, U]":
         """Add a WHERE condition.
 
         Supports both: where(field, value) and where(field, operator, value)
@@ -68,9 +73,7 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         new_builder = current_builder.where(field, *args)
         return self._clone_with_query_builder(new_builder)
 
-    def or_where(
-        self, field: str, *args: Any
-    ) -> "Repository[T, S, U]":
+    def or_where(self, field: str, *args: Any) -> "Repository[T, S, U]":
         """Add an OR WHERE condition.
 
         Supports both: or_where(field, value) and or_where(field, operator, value)
@@ -131,7 +134,7 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
     async def get(self) -> list[T]:
         """Execute the query and return all matching entities"""
         if self._query_builder is None:
-            self._query_builder = QueryBuilder(self.table_name)
+            self._query_builder = QueryBuilder(self._qualified_table_name)
 
         query, params = self._query_builder.build()
         rows = await self.db_ops.fetch_all(query, params)
@@ -205,7 +208,9 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
 
         # Apply ORDER BY if sort is provided (ASC by default, DESC via order_by_desc)
         query_repo = self._clone_with_query_builder(
-            self.search_builder.apply_sort(query_repo._get_or_create_query_builder(), sort)
+            self.search_builder.apply_sort(
+                query_repo._get_or_create_query_builder(), sort
+            )
         )
 
         return await query_repo.get()
@@ -218,7 +223,7 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         placeholders = ", ".join([f"${i + 1}" for i in range(len(values))])
 
         await self.db_ops.execute_query(
-            f"INSERT INTO {self.table_name} ({columns}) VALUES ({placeholders})",
+            f"INSERT INTO {self._qualified_table_name} ({columns}) VALUES ({placeholders})",
             values,
         )
         return entity
@@ -247,7 +252,7 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         values_clause = ", ".join(rows_placeholders)
 
         await self.db_ops.execute_query(
-            f"INSERT INTO {self.table_name} ({columns}) VALUES {values_clause}",
+            f"INSERT INTO {self._qualified_table_name} ({columns}) VALUES {values_clause}",
             all_values,
         )
         return entities
@@ -268,7 +273,8 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         values.insert(0, str(entity_id))
 
         await self.db_ops.execute_query(
-            f"UPDATE {self.table_name} SET {set_clause} WHERE id = $1", values
+            f"UPDATE {self._qualified_table_name} SET {set_clause} WHERE id = $1",
+            values,
         )
 
         # Use fluent interface to fetch updated entity
@@ -277,7 +283,7 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
     async def delete(self, entity_id: UUID) -> bool:
         """Delete entity by ID"""
         result = await self.db_ops.execute_query(
-            f"DELETE FROM {self.table_name} WHERE id = $1", [str(entity_id)]
+            f"DELETE FROM {self._qualified_table_name} WHERE id = $1", [str(entity_id)]
         )
         return result != "DELETE 0"
 
@@ -293,7 +299,8 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         placeholders = ", ".join([f"${i + 1}" for i in range(len(str_ids))])
 
         result = await self.db_ops.execute_query(
-            f"DELETE FROM {self.table_name} WHERE id IN ({placeholders})", str_ids
+            f"DELETE FROM {self._qualified_table_name} WHERE id IN ({placeholders})",
+            str_ids,
         )
 
         deleted_count = int(result.split()[-1]) if result != "DELETE 0" else 0

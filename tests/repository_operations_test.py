@@ -4,6 +4,7 @@ import pytest
 
 from src.db_context import DatabaseManager, transactional
 from src.entities import SortOrder
+from src.repository import Repository
 from tests.post_entities import Post, PostSearch, PostSort, PostUpdate
 from tests.post_repository import PostRepository
 
@@ -48,6 +49,29 @@ class TestPostRepositoryOperations:
         assert found_post.id == post.id
         assert found_post.title == post.title
         assert found_post.content == post.content
+
+    @pytest.mark.asyncio
+    @transactional("test")
+    async def test_schema_qualified_basic_crud(self):
+        """Test basic CRUD on schema-qualified table app.posts."""
+        repo = Repository(Post, PostSearch, PostUpdate, "posts", schema="app")
+
+        post = Post(id=uuid4(), title="Schema Post", content="From app schema")
+        await repo.create(post)
+
+        found = await repo.find_by_id(post.id)
+        assert found is not None
+        assert found.title == "Schema Post"
+
+        updated = await repo.update(post.id, PostUpdate(title="Updated Schema Post"))
+        assert updated is not None
+        assert updated.title == "Updated Schema Post"
+
+        deleted = await repo.delete(post.id)
+        assert deleted is True
+
+        not_found = await repo.find_by_id(post.id)
+        assert not_found is None
 
     @pytest.mark.asyncio
     @transactional("test")
