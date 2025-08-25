@@ -48,7 +48,8 @@ class TestOrderByAndComplexQueries:
             .where_in("category", ["tech", "science"])
             .or_where("featured", True)
             .where_not_in("status", ["draft", "archived"])
-            .order_by_desc("views").order_by("created_at")
+            .order_by_desc("views")
+            .order_by("created_at")
             .build()
         )
 
@@ -106,7 +107,8 @@ class TestOrderByAndComplexQueries:
             .where_in("category_id", [1, 2, 3, 5])
             .where_not_in("status", ["draft", "archived"])
             .where_group(visibility_conditions)
-            .order_by_desc("featured").order_by_desc("created_at")
+            .order_by_desc("featured")
+            .order_by_desc("created_at")
             .build()
         )
 

@@ -22,7 +22,8 @@ dev = [
 
 [tool.taskipy.tasks]
 test = "pytest --cov=src --cov-report=html"
-format = "uv run ruff format --check --diff"
+format-check = "uv run ruff format --check --diff"
+format = "uv run ruff format --diff"
 check = "uv run ruff check"
 
 # Ruff configuration

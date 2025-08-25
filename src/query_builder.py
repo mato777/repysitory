@@ -24,6 +24,9 @@ class QueryBuilder:
         self.params: list[Any] = []
         self.order_by_clause = ""
         self.order_by_parts: list[str] = []
+        self.group_by_parts: list[str] = []
+        self.having_conditions: list[str] = []
+        self.select_alias_map: dict[str, str] = {}
         self.limit_count: int | None = None
         self.offset_count: int | None = None
 
@@ -36,6 +39,9 @@ class QueryBuilder:
         new_builder.params = self.params.copy()
         new_builder.order_by_clause = self.order_by_clause
         new_builder.order_by_parts = self.order_by_parts.copy()
+        new_builder.group_by_parts = self.group_by_parts.copy()
+        new_builder.having_conditions = self.having_conditions.copy()
+        new_builder.select_alias_map = self.select_alias_map.copy()
         new_builder.limit_count = self.limit_count
         new_builder.offset_count = self.offset_count
         return new_builder
@@ -143,10 +149,29 @@ class QueryBuilder:
         # This avoids issues with overlapping replacements
         return re.sub(r"\$(\d+)", replace_param, condition)
 
-    def select(self, fields: str) -> "QueryBuilder":
-        """Set the SELECT fields"""
+    def select(self, *fields: str) -> "QueryBuilder":
+        """Set the SELECT fields. Accepts one string or multiple field strings."""
         new_builder = self._clone()
-        new_builder.select_fields = fields
+        if not fields:
+            new_builder.select_fields = "*"
+            new_builder.select_alias_map = {}
+        else:
+            new_builder.select_fields = ", ".join(fields)
+            # Build alias map for use in HAVING
+            alias_map: dict[str, str] = {}
+            import re
+
+            alias_pattern = re.compile(
+                r"^(.*?)[\s]+as[\s]+([A-Za-z_][A-Za-z0-9_]*)$", re.IGNORECASE
+            )
+            for raw in fields:
+                part = raw.strip()
+                m = alias_pattern.match(part)
+                if m:
+                    expr = m.group(1).strip()
+                    alias = m.group(2)
+                    alias_map[alias] = expr
+            new_builder.select_alias_map = alias_map
         return new_builder
 
     def where(
@@ -206,7 +231,9 @@ class QueryBuilder:
         new_builder = self._clone()
         for condition in conditions:
             field, operator, value = condition
-            new_builder = new_builder._add_condition(field, value, operator, is_or=False)
+            new_builder = new_builder._add_condition(
+                field, value, operator, is_or=False
+            )
         return new_builder
 
     def or_where_multiple(
@@ -320,6 +347,41 @@ class QueryBuilder:
         new_builder.order_by_parts.append(f"{field} DESC")
         return new_builder
 
+    def group_by(self, *fields: str) -> "QueryBuilder":
+        """Add GROUP BY fields. Can be chained or passed multiple fields."""
+        if not fields:
+            return self
+        new_builder = self._clone()
+        for field in fields:
+            if field:
+                new_builder.group_by_parts.append(f"{field}")
+        return new_builder
+
+    def having(self, field: str, *args: Any) -> "QueryBuilder":
+        """Add a HAVING condition.
+
+        Supports both of the following call styles:
+        - having(field, value)                   -> operator defaults to '='
+        - having(field, operator, value)         -> explicit operator in second place
+        """
+        new_builder = self._clone()
+        if len(args) == 2:
+            operator, value = args
+        elif len(args) == 1:
+            operator, value = "=", args[0]
+        else:
+            raise TypeError(
+                "having() expects (field, value) or (field, operator, value)"
+            )
+
+        # Resolve aliases from SELECT list, if any
+        resolved_field = new_builder.select_alias_map.get(field, field)
+        param_index = len(new_builder.params) + 1
+        condition = f"{resolved_field} {operator} ${param_index}"
+        new_builder.having_conditions.append(condition)
+        new_builder.params.append(value)
+        return new_builder
+
     def limit(self, count: int) -> "QueryBuilder":
         """Set the LIMIT clause"""
         new_builder = self._clone()
@@ -381,6 +443,15 @@ class QueryBuilder:
                 query_parts.append(f"WHERE {where_parts[0]}")
             else:
                 query_parts.append(f"WHERE {' OR '.join(where_parts)}")
+
+        if self.group_by_parts:
+            query_parts.append(f"GROUP BY {', '.join(self.group_by_parts)}")
+
+        if self.having_conditions:
+            if len(self.having_conditions) == 1:
+                query_parts.append(f"HAVING {self.having_conditions[0]}")
+            else:
+                query_parts.append(f"HAVING {' AND '.join(self.having_conditions)}")
 
         if self.order_by_parts:
             query_parts.append(f"ORDER BY {', '.join(self.order_by_parts)}")
