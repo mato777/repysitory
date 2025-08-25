@@ -58,10 +58,10 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         return new_repo
 
     # Fluent query methods that return a new repository instance
-    def select(self, fields: str = "*") -> "Repository[T, S, U]":
-        """Set the SELECT fields"""
+    def select(self, *fields: str) -> "Repository[T, S, U]":
+        """Set the SELECT fields. Accepts one or more field strings; defaults to * when none provided."""
         current_builder = self._get_or_create_query_builder()
-        new_builder = current_builder.select(fields)
+        new_builder = current_builder.select(*fields)
         return self._clone_with_query_builder(new_builder)
 
     def where(self, field: str, *args: Any) -> "Repository[T, S, U]":
@@ -112,6 +112,18 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         new_builder = current_builder.order_by_desc(field)
         return self._clone_with_query_builder(new_builder)
 
+    def group_by(self, *fields: str) -> "Repository[T, S, U]":
+        """Add GROUP BY fields."""
+        current_builder = self._get_or_create_query_builder()
+        new_builder = current_builder.group_by(*fields)
+        return self._clone_with_query_builder(new_builder)
+
+    def having(self, field: str, *args: Any) -> "Repository[T, S, U]":
+        """Add a HAVING condition. Supports (field, value) or (field, operator, value)."""
+        current_builder = self._get_or_create_query_builder()
+        new_builder = current_builder.having(field, *args)
+        return self._clone_with_query_builder(new_builder)
+
     def limit(self, count: int) -> "Repository[T, S, U]":
         """Set the LIMIT clause"""
         current_builder = self._get_or_create_query_builder()
@@ -138,6 +150,11 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
 
         query, params = self._query_builder.build()
         rows = await self.db_ops.fetch_all(query, params)
+
+        # If custom SELECT fields are used (not '*'), return raw rows as dictionaries
+        if self._query_builder.select_fields.strip() != "*":
+            return [dict(row) for row in rows]  # type: ignore[return-value]
+
         return self.entity_mapper.map_rows_to_entities(rows)
 
     async def first(self) -> T | None:
