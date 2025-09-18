@@ -1,7 +1,8 @@
+from datetime import UTC, datetime
 from typing import Any, TypeVar
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, create_model
 
 from src.database_operations import DatabaseOperations
 from src.entity_mapper import EntityMapper
@@ -23,18 +24,28 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         update_class: type[U],
         table_name: str,
         schema: str | None = None,
+        timestamps: bool = False,
     ):
         self.entity_class = entity_class
         self.search_class = search_class
         self.update_class = update_class
         self.table_name = table_name
         self.schema = schema
+        self.timestamps = timestamps
         self._qualified_table_name = f"{schema}.{table_name}" if schema else table_name
         self._query_builder: QueryBuilder | None = None
 
+        # Create dynamic entity class with timestamp fields if timestamps are enabled
+        if timestamps:
+            self._entity_class_with_timestamps = (
+                self._create_entity_class_with_timestamps(entity_class)
+            )
+        else:
+            self._entity_class_with_timestamps = entity_class
+
         # Composition: Inject dependencies
         self.db_ops = DatabaseOperations()
-        self.entity_mapper = EntityMapper(entity_class)
+        self.entity_mapper = EntityMapper(self._entity_class_with_timestamps)
         self.search_builder = SearchConditionBuilder()
 
     def _get_or_create_query_builder(self) -> QueryBuilder:
@@ -53,9 +64,60 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
             self.update_class,
             self.table_name,
             self.schema,
+            self.timestamps,
         )
         new_repo._query_builder = query_builder
         return new_repo
+
+    def _create_entity_class_with_timestamps(self, entity_class: type[T]) -> type[T]:
+        """Create a dynamic entity class with timestamp fields"""
+        # Get the original model fields
+        original_fields = entity_class.model_fields
+
+        # Add timestamp fields
+        timestamp_fields = {
+            "created_at": (datetime, None),
+            "updated_at": (datetime, None),
+        }
+
+        # Combine original fields with timestamp fields
+        all_fields = {**original_fields, **timestamp_fields}
+
+        # Create field definitions for create_model
+        field_definitions = {}
+        for name, field_info in all_fields.items():
+            if hasattr(field_info, "annotation") and hasattr(field_info, "default"):
+                field_definitions[name] = (field_info.annotation, field_info.default)
+            else:
+                # For timestamp fields, use the tuple directly
+                field_definitions[name] = field_info
+
+        # Create a new model class
+        return create_model(
+            f"{entity_class.__name__}WithTimestamps",
+            __base__=entity_class,
+            **field_definitions,
+        )
+
+    def _get_current_timestamp(self) -> datetime:
+        """Get current UTC timestamp as datetime object"""
+        return datetime.now(UTC)
+
+    def _inject_timestamps(
+        self, data: dict[str, Any], is_create: bool = True
+    ) -> dict[str, Any]:
+        """Inject timestamp fields into data dictionary"""
+        if not self.timestamps:
+            return data
+
+        timestamp = self._get_current_timestamp()
+        if is_create:
+            data["created_at"] = timestamp
+            data["updated_at"] = timestamp
+        else:
+            data["updated_at"] = timestamp
+
+        return data
 
     # Fluent query methods that return a new repository instance
     def select(self, *fields: str) -> "Repository[T, S, U]":
@@ -235,6 +297,8 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
     async def create(self, entity: T) -> T:
         """Create a new entity"""
         fields = entity.model_dump()
+        fields = self._inject_timestamps(fields, is_create=True)
+
         columns = ", ".join(fields.keys())
         values = list(fields.values())
         placeholders = ", ".join([f"${i + 1}" for i in range(len(values))])
@@ -243,14 +307,21 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
             f"INSERT INTO {self._qualified_table_name} ({columns}) VALUES ({placeholders})",
             values,
         )
-        return entity
+
+        # Return entity with timestamps
+        return self._entity_class_with_timestamps(**fields)
 
     async def create_many(self, entities: list[T]) -> list[T]:
         """Create multiple entities"""
         if not entities:
             return []
 
-        fields = entities[0].model_dump().keys()
+        # Process first entity to get field structure
+        first_entity_fields = entities[0].model_dump()
+        first_entity_fields = self._inject_timestamps(
+            first_entity_fields, is_create=True
+        )
+        fields = first_entity_fields.keys()
         columns = ", ".join(fields)
 
         field_count = len(fields)
@@ -258,7 +329,9 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         all_values = []
 
         for i, entity in enumerate(entities):
-            entity_values = list(entity.model_dump().values())
+            entity_fields = entity.model_dump()
+            entity_fields = self._inject_timestamps(entity_fields, is_create=True)
+            entity_values = list(entity_fields.values())
             all_values.extend(entity_values)
 
             row_placeholders = ", ".join(
@@ -272,13 +345,22 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
             f"INSERT INTO {self._qualified_table_name} ({columns}) VALUES {values_clause}",
             all_values,
         )
-        return entities
+
+        # Return entities with timestamps
+        result_entities = []
+        for entity in entities:
+            entity_fields = entity.model_dump()
+            entity_fields = self._inject_timestamps(entity_fields, is_create=True)
+            result_entities.append(self._entity_class_with_timestamps(**entity_fields))
+
+        return result_entities
 
     async def update(self, entity_id: UUID, update_data: U) -> T | None:
         """Update entity and return updated version using fluent interface"""
         update_dict = {
             k: v for k, v in update_data.model_dump().items() if v is not None
         }
+        update_dict = self._inject_timestamps(update_dict, is_create=False)
 
         if not update_dict:
             return await self.find_by_id(entity_id)

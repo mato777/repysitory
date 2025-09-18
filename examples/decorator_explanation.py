@@ -11,39 +11,14 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from uuid import uuid4
 
-from pydantic import BaseModel
-
 from examples.db_setup import (
     cleanup_example_data,
     close_connections,
     setup_example_schema,
     setup_postgres_connection,
 )
+from examples.sample_data import Post, PostRepository, PostUpdate
 from src.db_context import DatabaseManager, transactional
-from src.entities import BaseEntity
-from src.repository import Repository
-
-
-# Example entities and models
-class Post(BaseEntity):
-    title: str
-    content: str
-
-
-class PostSearch(BaseModel):
-    id: str | None = None
-    title: str | None = None
-    content: str | None = None
-
-
-class PostUpdate(BaseModel):
-    title: str | None = None
-    content: str | None = None
-
-
-class PostRepository(Repository[Post, PostSearch, PostUpdate]):
-    def __init__(self):
-        super().__init__(Post, PostSearch, PostUpdate, "posts")
 
 
 class PostService:
@@ -64,7 +39,7 @@ class PostService:
 
         # These ARE atomic - if post2 fails, post1 is also rolled back
 
-    @transactional("analytics_db")
+    @transactional("default")
     async def example_with_different_database(self):
         """Repository calls use the 'analytics_db' database transaction"""
         post = Post(id=uuid4(), title="Analytics Post", content="Data content")

@@ -5,13 +5,12 @@ Example showing how to use the sorting functionality with the repository
 import asyncio
 import sys
 from pathlib import Path
+from uuid import uuid4
+
+from pydantic import BaseModel
 
 # Add the parent directory to Python path so we can import from src
 sys.path.append(str(Path(__file__).parent.parent))
-
-from uuid import uuid4
-
-from pydantic import BaseModel, ConfigDict
 
 from examples.db_setup import (
     cleanup_example_data,
@@ -19,41 +18,18 @@ from examples.db_setup import (
     setup_example_schema,
     setup_postgres_connection,
 )
+from examples.sample_data import Post, PostRepository, PostSearch
 from src.db_context import DatabaseManager, transactional
-from src.entities import BaseEntity, SortOrder
-from src.repository import Repository
-
-
-# Example entities and models
-class Post(BaseEntity):
-    title: str
-    content: str
-
-
-class PostSearch(BaseModel):
-    id: str | None = None
-    title: str | None = None
-    content: str | None = None
-
-
-class PostUpdate(BaseModel):
-    title: str | None = None
-    content: str | None = None
+from src.entities import SortOrder
 
 
 class PostSort(BaseModel):
-    model_config = ConfigDict(use_enum_values=True)
-
+    id: SortOrder | None = None
     title: SortOrder | None = None
     content: SortOrder | None = None
-    id: SortOrder | None = None
 
 
-class PostRepository(Repository[Post, PostSearch, PostUpdate]):
-    def __init__(self):
-        super().__init__(Post, PostSearch, PostUpdate, "posts")
-
-    # Convenience methods with built-in sorting
+class PostRepositoryWithSort(PostRepository):
     async def find_all_sorted_by_title(self):
         sort = PostSort(title=SortOrder.ASC)
         return await self.find_many_by(sort=sort)
@@ -63,28 +39,31 @@ class PostRepository(Repository[Post, PostSearch, PostUpdate]):
         return await self.find_many_by(sort=sort)
 
 
+post_repo_type = PostRepositoryWithSort
+
+
 @transactional("default")
 async def sorting_examples():
     """Examples of different sorting patterns"""
-    post_repo = PostRepository()
+    post_repo = post_repo_type()
 
     # Example 1: Simple single field sorting
     print("=== Single Field Sorting ===")
 
     # Sort by title ascending (default)
     sort = PostSort(title=SortOrder.ASC)
-    await post_repo.find_many_by(sort=sort)
+    _ = await post_repo.find_many_by(sort=sort)
 
     # Sort by title descending
     sort = PostSort(title=SortOrder.DESC)
-    await post_repo.find_many_by(sort=sort)
+    _ = await post_repo.find_many_by(sort=sort)
 
     # Example 2: Multi-field sorting
     print("=== Multi-Field Sorting ===")
 
     # Sort by title ASC, then by content DESC
     sort = PostSort(title=SortOrder.ASC, content=SortOrder.DESC)
-    await post_repo.find_many_by(sort=sort)
+    _ = await post_repo.find_many_by(sort=sort)
     # SQL: ORDER BY title ASC, content DESC
 
     # Example 3: Combining search with sorting
@@ -93,17 +72,17 @@ async def sorting_examples():
     # Find posts with specific content, sorted by title
     search = PostSearch(content="tutorial")
     sort = PostSort(title=SortOrder.ASC)
-    await post_repo.find_many_by(search=search, sort=sort)
+    _ = await post_repo.find_many_by(search=search, sort=sort)
     # SQL: WHERE content = 'tutorial' ORDER BY title ASC
 
     # Example 4: Using convenience methods
     print("=== Convenience Methods ===")
 
     # Get all posts sorted by title
-    await post_repo.find_all_sorted_by_title()
+    _ = await post_repo.find_all_sorted_by_title()
 
     # Get latest posts (by ID descending)
-    await post_repo.find_latest_posts()
+    _ = await post_repo.find_latest_posts()
 
     # Example 5: Type-safe field validation
     print("=== Type Safety ===")
@@ -118,17 +97,17 @@ async def sorting_examples():
     print("=== Optional Sorting ===")
 
     # Get all posts without any sorting
-    await post_repo.find_many_by()
+    _ = await post_repo.find_many_by()
 
     # Search without sorting
     search = PostSearch(title="Hello")
-    await post_repo.find_many_by(search=search)
+    _ = await post_repo.find_many_by(search=search)
 
 
 @transactional("default")
 async def advanced_sorting_examples():
     """More advanced sorting scenarios"""
-    post_repo = PostRepository()
+    post_repo = post_repo_type()
 
     # Example 1: Complex business logic with sorting
     async def get_featured_posts():
@@ -164,16 +143,16 @@ async def advanced_sorting_examples():
         return posts
 
     # Run examples
-    await get_featured_posts()
-    await get_posts_by_preference("newest")
-    await search_posts_with_fallback("tutorial")
+    _ = await get_featured_posts()
+    _ = await get_posts_by_preference("newest")
+    _ = await search_posts_with_fallback("tutorial")
 
 
 # Example of multiple database sorting
-@transactional("analytics_db")
+@transactional("default")
 async def analytics_sorting_example():
     """Example using different database for analytics"""
-    analytics_repo = PostRepository()  # Same repo, different DB context
+    analytics_repo = post_repo_type()  # Same repo, different DB context
 
     # Get most popular posts (sorted by engagement metrics)
     sort = PostSort(title=SortOrder.DESC)  # Simulating popularity sort
@@ -185,7 +164,7 @@ async def analytics_sorting_example():
 # Manual transaction with sorting
 async def manual_transaction_sorting():
     """Example of manual transaction management with sorting"""
-    post_repo = PostRepository()
+    post_repo = post_repo_type()
 
     async with DatabaseManager.transaction("default"):
         # Create some test posts
@@ -200,8 +179,9 @@ async def manual_transaction_sorting():
         sort = PostSort(title=SortOrder.ASC)
         sorted_posts = await post_repo.find_many_by(sort=sort)
 
-        assert sorted_posts[0].title == post1.title
-        assert sorted_posts[-1].title == post2.title  # Assuming only these two posts
+        # Alpha should come before Zebra when sorting ASC
+        assert sorted_posts[0].title == post2.title
+        assert sorted_posts[-1].title == post1.title
 
 
 if __name__ == "__main__":
@@ -212,7 +192,7 @@ if __name__ == "__main__":
         # Setup database connection
         print("🔧 Setting up database connection...")
         try:
-            await setup_postgres_connection()
+            _ = await setup_postgres_connection()
             await setup_example_schema()
             await cleanup_example_data()
 
@@ -227,16 +207,16 @@ if __name__ == "__main__":
 
         try:
             print("\n=== Sorting Examples ===")
-            await sorting_examples()
+            _ = await sorting_examples()
 
             print("\n=== Advanced Sorting Examples ===")
-            await advanced_sorting_examples()
+            _ = await advanced_sorting_examples()
 
             print("\n=== Analytics Sorting Example ===")
-            await analytics_sorting_example()
+            _ = await analytics_sorting_example()
 
             print("\n=== Manual Transaction Sorting ===")
-            await manual_transaction_sorting()
+            _ = await manual_transaction_sorting()
 
             print("\n✅ All sorting examples completed successfully!")
 

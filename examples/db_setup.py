@@ -17,8 +17,8 @@ async def setup_postgres_connection(
     host: str = "localhost",
     port: int = 5432,
     database: str = "postgres",
-    user: str = "root",
-    password: str = "root",
+    user: str = "postgres",
+    password: str = "postgres",
     pool_name: str = "default",
 ):
     """

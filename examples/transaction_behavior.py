@@ -9,7 +9,7 @@ from pathlib import Path
 # Add the parent directory to Python path so we can import from src
 sys.path.append(str(Path(__file__).parent.parent))
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel
 
@@ -54,14 +54,14 @@ async def transaction_rollback_example():
     try:
         # Create first post
         post1 = Post(id=uuid4(), title="First Post", content="This will be rolled back")
-        await post_repo.create(post1)
+        _ = await post_repo.create(post1)
         print(f"Created post: {post1.title}")
 
         # Create second post
         post2 = Post(
             id=uuid4(), title="Second Post", content="This will also be rolled back"
         )
-        await post_repo.create(post2)
+        _ = await post_repo.create(post2)
         print(f"Created post: {post2.title}")
 
         # Verify both posts exist within transaction
@@ -84,7 +84,6 @@ async def transaction_rollback_example():
 # Example 2: Successful Transaction Commit
 @transactional("default")
 async def transaction_commit_example():
-    """Demonstrates successful transaction commit"""
     post_repo = PostRepository()
 
     # Create posts within transaction
@@ -93,12 +92,12 @@ async def transaction_commit_example():
         id=uuid4(), title="Committed Post 2", content="This will also be saved"
     )
 
-    await post_repo.create(post1)
-    await post_repo.create(post2)
+    _ = await post_repo.create(post1)
+    _ = await post_repo.create(post2)
 
     # Update one of the posts
     update_data = PostUpdate(title="Updated Committed Post 1")
-    await post_repo.update(post1.id, update_data)
+    _ = await post_repo.update(post1.id, update_data)
 
     print("Transaction completed successfully - all changes committed")
 
@@ -108,7 +107,10 @@ async def transaction_commit_example():
         print(f"Posts after commit: {len(all_posts)}")
 
         updated_post = await post_repo.find_by_id(post1.id)
-        print(f"Updated post title: {updated_post.title}")
+        if updated_post:
+            print(f"Updated post title: {updated_post.title}")
+        else:
+            print("Updated post not found")
 
 
 # Example 3: Nested Transactions
@@ -119,7 +121,7 @@ async def nested_transaction_example():
 
     # Outer transaction
     post1 = Post(id=uuid4(), title="Outer Transaction Post", content="Created in outer")
-    await post_repo.create(post1)
+    _ = await post_repo.create(post1)
     print("Created post in outer transaction")
 
     try:
@@ -128,7 +130,7 @@ async def nested_transaction_example():
             post2 = Post(
                 id=uuid4(), title="Inner Transaction Post", content="Created in inner"
             )
-            await post_repo.create(post2)
+            _ = await post_repo.create(post2)
             print("Created post in inner transaction")
 
             # Both posts are visible within inner transaction
@@ -153,16 +155,16 @@ async def nested_transaction_example():
 async def multi_database_example():
     """Example using multiple databases"""
 
-    @transactional("user_db")
+    @transactional("default")
     async def create_user_data():
         post_repo = PostRepository()
         user_post = Post(
             id=uuid4(), title="User DB Post", content="Stored in user database"
         )
-        await post_repo.create(user_post)
+        _ = await post_repo.create(user_post)
         return user_post
 
-    @transactional("analytics_db")
+    @transactional("default")
     async def create_analytics_data():
         post_repo = PostRepository()
         analytics_post = Post(
@@ -170,7 +172,7 @@ async def multi_database_example():
             title="Analytics DB Post",
             content="Stored in analytics database",
         )
-        await post_repo.create(analytics_post)
+        _ = await post_repo.create(analytics_post)
         return analytics_post
 
     # Each transaction uses a different database
@@ -190,14 +192,14 @@ async def manual_transaction_example():
     async with DatabaseManager.transaction("default"):
         # All repository operations automatically use this transaction
         post1 = Post(id=uuid4(), title="Manual TX Post 1", content="First post")
-        await post_repo.create(post1)
+        _ = await post_repo.create(post1)
 
         post2 = Post(id=uuid4(), title="Manual TX Post 2", content="Second post")
-        await post_repo.create(post2)
+        _ = await post_repo.create(post2)
 
         # Update within same transaction
         update_data = PostUpdate(content="Updated content")
-        await post_repo.update(post1.id, update_data)
+        _ = await post_repo.update(post1.id, update_data)
 
         # All operations are part of the same transaction
         all_posts = await post_repo.find_many_by()
@@ -210,7 +212,7 @@ async def manual_transaction_example():
 # Example 6: Transaction with Business Logic
 class PostService:
     def __init__(self):
-        self.post_repo = PostRepository()
+        self.post_repo: PostRepository = PostRepository()
 
     @transactional("default")
     async def create_post_with_validation(self, title: str, content: str):
@@ -236,13 +238,13 @@ class PostService:
         return created_post
 
     @transactional("default")
-    async def bulk_update_posts(self, updates: dict):
+    async def bulk_update_posts(self, updates: dict[str, dict[str, str]]) -> list[Post]:
         """Bulk update multiple posts in single transaction"""
-        results = []
+        results: list[Post] = []
 
         for post_id, update_data in updates.items():
             post_update = PostUpdate(**update_data)
-            updated_post = await self.post_repo.update(post_id, post_update)
+            updated_post = await self.post_repo.update(UUID(post_id), post_update)
             if updated_post:
                 results.append(updated_post)
 
@@ -265,7 +267,7 @@ async def business_logic_transaction_example():
         print(f"Created valid post: {post1.title}")
 
         # This will fail and rollback
-        await service.create_post_with_validation("No", "This contains spam")
+        _ = await service.create_post_with_validation("No", "This contains spam")
 
     except ValueError as e:
         print(f"Validation failed: {e}")
@@ -290,7 +292,7 @@ async def main():
     # Setup database connection
     print("🔧 Setting up database connection...")
     try:
-        await setup_postgres_connection()
+        _ = await setup_postgres_connection()
         await setup_example_schema()
         await cleanup_example_data()
 
