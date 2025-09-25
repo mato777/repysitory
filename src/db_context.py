@@ -34,30 +34,34 @@ class DatabaseManager:
     @classmethod
     @asynccontextmanager
     async def transaction(cls, db_name: str = "default"):
-        """Context manager for database transactions"""
+        """Context manager for database transactions.
+
+        Behavior:
+        - If called within an existing transaction/connection, it opens a nested transaction using the same connection.
+        - Otherwise it acquires a connection from the asyncpg pool using `async with pool.acquire()` and starts a transaction.
+        - The connection acquired from the pool is always released back to the pool when the context exits,
+          regardless of whether it exits normally or due to an exception. This is guaranteed by the async
+          context manager (`__aexit__`) of asyncpg's Pool.acquire.
+        """
         current_conn = _current_connection.get()
 
-        # If connection already exists, use nested transaction
+        # If a connection already exists, use nested transaction
         if current_conn:
             async with current_conn.transaction():
                 yield current_conn
         else:
-            # Create new connection and transaction
+            # Create a new connection and transaction
             pool = await cls.get_pool(db_name)
-            conn = await pool.acquire()
-            try:
-                async with conn.transaction():
-                    token = _current_connection.set(conn)
-                    try:
-                        yield conn
-                    finally:
-                        _current_connection.reset(token)
-            finally:
-                await pool.release(conn)
+            async with pool.acquire() as conn, conn.transaction():
+                token = _current_connection.set(conn)
+                try:
+                    yield conn
+                finally:
+                    _current_connection.reset(token)
 
 
 def transactional(db_name: str = "default"):
-    """Decorator to run function within a database transaction"""
+    """Decorator to run a function within a database transaction"""
 
     def decorator(func):
         @wraps(func)

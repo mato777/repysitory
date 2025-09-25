@@ -35,7 +35,7 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         self._qualified_table_name = f"{schema}.{table_name}" if schema else table_name
         self._query_builder: QueryBuilder | None = None
 
-        # Create dynamic entity class with timestamp fields if timestamps are enabled
+        # Create a dynamic entity class with timestamp fields if timestamps are enabled
         if timestamps:
             self._entity_class_with_timestamps = (
                 self._create_entity_class_with_timestamps(entity_class)
@@ -49,7 +49,7 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         self.search_builder = SearchConditionBuilder()
 
     def _get_or_create_query_builder(self) -> QueryBuilder:
-        """Get existing query builder or create a new one"""
+        """Get an existing query builder or create a new one"""
         if self._query_builder is None:
             return QueryBuilder(self._qualified_table_name)
         return self._query_builder
@@ -69,7 +69,8 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         new_repo._query_builder = query_builder
         return new_repo
 
-    def _create_entity_class_with_timestamps(self, entity_class: type[T]) -> type[T]:
+    @staticmethod
+    def _create_entity_class_with_timestamps(entity_class: type[T]) -> type[T]:
         """Create a dynamic entity class with timestamp fields"""
         # Get the original model fields
         original_fields = entity_class.model_fields
@@ -99,14 +100,15 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
             **field_definitions,
         )
 
-    def _get_current_timestamp(self) -> datetime:
-        """Get current UTC timestamp as datetime object"""
+    @staticmethod
+    def _get_current_timestamp() -> datetime:
+        """Get current UTC timestamp as a datetime object"""
         return datetime.now(UTC)
 
     def _inject_timestamps(
         self, data: dict[str, Any], is_create: bool = True
     ) -> dict[str, Any]:
-        """Inject timestamp fields into data dictionary"""
+        """Inject timestamp fields into the data dictionary"""
         if not self.timestamps:
             return data
 
@@ -121,7 +123,7 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
 
     # Fluent query methods that return a new repository instance
     def select(self, *fields: str) -> "Repository[T, S, U]":
-        """Set the SELECT fields. Accepts one or more field strings; defaults to * when none provided."""
+        """Set the SELECT fields. Accepts one or more field strings; defaults to * when none is provided."""
         current_builder = self._get_or_create_query_builder()
         new_builder = current_builder.select(*fields)
         return self._clone_with_query_builder(new_builder)
@@ -129,7 +131,7 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
     def where(self, field: str, *args: Any) -> "Repository[T, S, U]":
         """Add a WHERE condition.
 
-        Supports both: where(field, value) and where(field, operator, value)
+        Supports both: where(field, value) and where (field, operator, value)
         """
         current_builder = self._get_or_create_query_builder()
         new_builder = current_builder.where(field, *args)
@@ -260,7 +262,7 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         return await self.where("id", str(entity_id)).first()
 
     async def find_one_by(self, search: S) -> T | None:
-        """Find one entity by search criteria using fluent interface"""
+        """Find one entity by search criteria using a fluent interface"""
         search_dict = {k: v for k, v in search.model_dump().items() if v is not None}
         if not search_dict:
             return None
@@ -275,7 +277,7 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
     async def find_many_by(
         self, search: S | None = None, sort: BaseModel | None = None
     ) -> list[T]:
-        """Find many entities by search criteria using fluent interface"""
+        """Find many entities by search criteria using a fluent interface"""
         query_repo = self
 
         if search:
@@ -285,7 +287,7 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
             for field, value in search_dict.items():
                 query_repo = query_repo.where(field, value)
 
-        # Apply ORDER BY if sort is provided (ASC by default, DESC via order_by_desc)
+        # Apply ORDER BY if a sort is provided (ASC by default, DESC via order_by_desc)
         query_repo = self._clone_with_query_builder(
             self.search_builder.apply_sort(
                 query_repo._get_or_create_query_builder(), sort
@@ -316,7 +318,7 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         if not entities:
             return []
 
-        # Process first entity to get field structure
+        # Process the first entity to get field structure
         first_entity_fields = entities[0].model_dump()
         first_entity_fields = self._inject_timestamps(
             first_entity_fields, is_create=True
@@ -356,7 +358,7 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         return result_entities
 
     async def update(self, entity_id: UUID, update_data: U) -> T | None:
-        """Update entity and return updated version using fluent interface"""
+        """Update entity and return the updated version using fluent interface"""
         update_dict = {
             k: v for k, v in update_data.model_dump().items() if v is not None
         }
@@ -376,8 +378,43 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
             values,
         )
 
-        # Use fluent interface to fetch updated entity
+        # Use fluent interface to fetch an updated entity
         return await self.find_by_id(entity_id)
+
+    async def update_many_by_ids(self, ids: list[UUID], update_data: U) -> list[T]:
+        """Update multiple entities by their IDs with the same changes and return the updated entities."""
+        if not ids:
+            return []
+
+        # Build update dict excluding None values and inject timestamps if enabled
+        update_dict = {
+            k: v for k, v in update_data.model_dump().items() if v is not None
+        }
+        update_dict = self._inject_timestamps(update_dict, is_create=False)
+
+        if not update_dict:
+            # Nothing to update
+            return []
+
+        # SET clauses start at $1..$m
+        set_clause = ", ".join(
+            [f"{k} = ${i + 1}" for i, k in enumerate(update_dict.keys())]
+        )
+
+        # WHERE id IN placeholders continue after the SET params
+        str_ids = [str(entity_id) for entity_id in ids]
+        ids_placeholders = ", ".join(
+            [f"${len(update_dict) + i + 1}" for i in range(len(str_ids))]
+        )
+
+        sql = (
+            f"UPDATE {self._qualified_table_name} SET {set_clause} "
+            f"WHERE id IN ({ids_placeholders}) RETURNING *"
+        )
+        params = list(update_dict.values()) + str_ids
+
+        rows = await self.db_ops.fetch_all(sql, params)
+        return self.entity_mapper.map_rows_to_entities(rows)
 
     async def delete(self, entity_id: UUID) -> bool:
         """Delete entity by ID"""
@@ -387,13 +424,13 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         return result != "DELETE 0"
 
     async def delete_many(self, ids: list[UUID]) -> int:
-        """Delete multiple entities by their IDs using fluent interface"""
+        """Delete multiple entities by their IDs using a fluent interface"""
         if not ids:
             return 0
 
         str_ids = [str(entity_id) for entity_id in ids]
 
-        # Could potentially use fluent interface: self.where_in("id", str_ids).delete()
+        # Could potentially use a fluent interface: self.where_in("id", str_ids).delete()
         # But keeping direct implementation for now
         placeholders = ", ".join([f"${i + 1}" for i in range(len(str_ids))])
 

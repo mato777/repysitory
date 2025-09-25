@@ -24,7 +24,7 @@ class DatabaseOperations:
         return await conn.fetch(query, *params)
 
     async def fetch_one(self, query: str, params: list[Any]) -> Any:
-        """Execute query and fetch one row"""
+        """Execute a query and fetch one row"""
         conn = self.get_connection()
         return await conn.fetchrow(query, *params)
 
