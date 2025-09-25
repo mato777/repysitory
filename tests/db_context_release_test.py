@@ -45,7 +45,7 @@ async def test_connection_released_on_exception_concurrent():
 
     done, pending = await asyncio.wait(tasks, timeout=5)
 
-    assert (
-        not pending
-    ), "Some transactions did not finish; connections may not have been released"
+    assert not pending, (
+        "Some transactions did not finish; connections may not have been released"
+    )
     assert all(t.result() is True for t in done)
