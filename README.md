@@ -49,3 +49,35 @@ To AI Agents to help me write the code and documentation.
 
 5. Pro tips
    - Add to your shell: `alias uvr="uv run task"` so you can later do `uvr format` and run commands inside pyproject.toml
+
+
+## Project tasks (Taskipy + pre-commit)
+
+This project defines a small set of repeatable tasks in pyproject.toml using Taskipy and delegates lint/format to pre-commit.
+
+Prerequisites
+- Install dependencies (dev included):
+  - uv sync --all-groups
+- Install pre-commit hooks locally (once per clone):
+  - uv run pre-commit install
+
+Available tasks
+- Test (with coverage HTML report to htmlcov/):
+  - uv run task test
+- Lint (Ruff via pre-commit):
+  - uv run task lint
+- Format (Ruff formatter via pre-commit):
+  - uv run task format
+- Run all pre-commit hooks across the repo:
+  - uv run task pre-commit-all
+
+Notes
+- pre-commit runs additional utilities (trailing-whitespace, end-of-file-fixer) beyond Ruff, so it may produce small whitespace/end-of-file changes even when Ruff shows none.
+- Ruff version is pinned to align between pre-commit and the project configuration, ensuring consistent results no matter how you run it.
+
+Tips
+- If you added this to your shell earlier: alias uvr="uv run task" you can now run, for example:
+  - uvr test
+  - uvr lint
+  - uvr format
+  - uvr pre-commit-all

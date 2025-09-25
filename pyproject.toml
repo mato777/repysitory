@@ -22,10 +22,16 @@ dev = [
 ]
 
 [tool.taskipy.tasks]
+# Run full test suite with coverage
 test = "pytest --cov=src --cov-report=html"
-format-check = "uv run ruff format --check --diff"
-format = "uv run ruff format"
-check = "uv run ruff check"
+
+# Use pre-commit as the single source of truth for Ruff lint/format
+# Lint (ruff) across the entire repo using the pre-commit hook configuration
+lint = "uv run pre-commit run -a ruff"
+# Format (ruff-format) across the entire repo using the pre-commit hook configuration
+format = "uv run pre-commit run -a ruff-format"
+# Run all hooks (including ruff and ruff-format) across the entire repo
+pre-commit-all = "uv run pre-commit run -a"
 
 # Ruff configuration
 [tool.ruff]
