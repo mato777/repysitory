@@ -81,3 +81,143 @@ Tips
   - uvr lint
   - uvr format
   - uvr pre-commit-all
+
+## Features
+
+### QueryBuilder
+- **Fluent SQL Query Building** - Chainable, immutable query builder pattern
+- **SELECT Operations**
+  - Custom field selection with support for aliases
+  - Support for aggregate functions (COUNT, SUM, etc.)
+- **WHERE Conditions**
+  - Basic conditions with custom operators (=, !=, <, >, <=, >=, LIKE, etc.)
+  - `where(field, value)` - defaults to equality
+  - `where(field, operator, value)` - custom operator
+  - `where_in(field, values)` - IN clause
+  - `where_not_in(field, values)` - NOT IN clause
+- **OR WHERE Conditions**
+  - `or_where(field, value)` - OR conditions
+  - `or_where(field, operator, value)` - OR with custom operator
+  - `or_where_in(field, values)` - OR with IN clause
+  - `or_where_not_in(field, values)` - OR with NOT IN clause
+- **Grouped Conditions** - Parenthesized condition groups using lambda functions
+  - `where_group(lambda qb: ...)` - AND grouped conditions
+  - `or_where_group(lambda qb: ...)` - OR grouped conditions
+- **Aggregation & Grouping**
+  - `group_by(*fields)` - GROUP BY clause
+  - `having(field, operator, value)` - HAVING clause with alias resolution
+- **Sorting**
+  - `order_by(field)` - ORDER BY (defaults to ASC)
+  - `order_by_asc(field)` - Explicit ascending order
+  - `order_by_desc(field)` - Descending order
+  - Chainable for multi-field sorting
+- **Pagination**
+  - `limit(count)` - LIMIT clause
+  - `offset(count)` - OFFSET clause
+  - `paginate(page, per_page)` - Page-based pagination
+- **Query Output**
+  - `build()` - Returns SQL query and parameters
+  - `to_sql()` - Returns only SQL string for debugging
+
+### Repository Pattern
+- **Generic Repository** - Type-safe repository with generic Entity, Search, and Update models
+- **CRUD Operations**
+  - `create(entity)` - Create single entity
+  - `create_many(entities)` - Bulk create
+  - `find_by_id(id)` - Find by UUID
+  - `find_one_by(search)` - Find single entity by search criteria
+  - `find_many_by(search, sort)` - Find multiple with sorting
+  - `update(id, update_data)` - Update single entity
+  - `update_many_by_ids(ids, update_data)` - Bulk update
+  - `delete(id)` - Delete by ID
+  - `delete_many(ids)` - Bulk delete
+- **Fluent Query Interface** - All QueryBuilder methods available on Repository
+  - `select(*fields)` - Custom field selection
+  - `where(field, value)` - Add WHERE conditions
+  - `or_where(field, value)` - Add OR WHERE conditions
+  - `where_in(field, values)` - WHERE IN
+  - `where_not_in(field, values)` - WHERE NOT IN
+  - `order_by(field)` / `order_by_asc(field)` / `order_by_desc(field)` - Sorting
+  - `group_by(*fields)` - Grouping
+  - `having(field, value)` - HAVING clause
+  - `limit(count)` / `offset(count)` - Pagination
+  - `paginate(page, per_page)` - Page-based pagination
+- **Execution Methods**
+  - `get()` - Execute query and return all results
+  - `first()` - Execute and return first result
+  - `count()` - Return count of matching records
+  - `exists()` - Check if any records match
+- **Repository Configuration** - Type-safe configuration using `RepositoryConfig`
+  - `db_schema` - Optional database schema name for multi-schema support
+  - `timestamps` - Enable automatic `created_at` and `updated_at` management
+- **Automatic Timestamps** - Optional `created_at` and `updated_at` management
+- **Schema Support** - Multi-schema database support
+- **Pydantic Integration** - Full Pydantic model support for entities, search, and updates
+
+### Database Context & Transaction Management
+- **Connection Pooling** - Named database pool management with `DatabaseManager`
+- **Transaction Context Manager** - `async with DatabaseManager.transaction():`
+- **Nested Transaction Support** - Automatic detection and handling of nested transactions
+- **Transactional Decorator** - `@transactional(db_name)` decorator for automatic transaction wrapping
+- **Context-Aware Connections** - ContextVar-based connection management for async safety
+- **Multi-Database Support** - Named database pools for multiple database connections
+
+### Entity & Mapping
+- **Pydantic-Based Entities** - Type-safe entity definitions using Pydantic
+- **Base Entity Class** - UUID primary key support with auto-generation
+- **Automatic Row Mapping** - Database row to entity object mapping
+- **Enum Support** - Built-in enum value handling (e.g., SortOrder)
+- **Dynamic Entity Classes** - Runtime entity class creation with timestamp fields
+
+### Search & Sorting
+- **Type-Safe Search Models** - Pydantic-based search criteria
+- **Type-Safe Update Models** - Pydantic-based partial update models
+- **Dynamic Sorting** - Sort models with ASC/DESC enum support
+- **Null-Safe Filtering** - Automatic filtering of None values in search criteria
+
+## Usage Examples
+
+### Repository Configuration
+
+Configure your repository with optional settings using `RepositoryConfig`:
+
+```python
+from src.repository import Repository, RepositoryConfig
+
+# Basic repository without configuration
+repo = Repository(
+    entity_class=Post,
+    search_class=PostSearch,
+    update_class=PostUpdate,
+    table_name="posts"
+)
+
+# Repository with database schema
+repo = Repository(
+    entity_class=Post,
+    search_class=PostSearch,
+    update_class=PostUpdate,
+    table_name="posts",
+    config=RepositoryConfig(db_schema="app")
+)
+
+# Repository with automatic timestamps
+repo = Repository(
+    entity_class=Post,
+    search_class=PostSearch,
+    update_class=PostUpdate,
+    table_name="posts",
+    config=RepositoryConfig(timestamps=True)
+)
+
+# Repository with both schema and timestamps
+repo = Repository(
+    entity_class=Post,
+    search_class=PostSearch,
+    update_class=PostUpdate,
+    table_name="posts",
+    config=RepositoryConfig(db_schema="app", timestamps=True)
+)
+```
+
+The `RepositoryConfig` model provides a type-safe way to configure repositories and makes it easy to add new configuration options in the future.

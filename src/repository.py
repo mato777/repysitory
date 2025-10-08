@@ -1,8 +1,10 @@
+"""Repository class"""
+
 from datetime import UTC, datetime
 from typing import Any, TypeVar
 from uuid import UUID
 
-from pydantic import BaseModel, create_model
+from pydantic import BaseModel, Field, create_model
 
 from src.database_operations import DatabaseOperations
 from src.entity_mapper import EntityMapper
@@ -14,6 +16,15 @@ S = TypeVar("S", bound=BaseModel)  # Search model type
 U = TypeVar("U", bound=BaseModel)  # Update model type
 
 
+class RepositoryConfig(BaseModel):
+    """Configuration options for Repository"""
+
+    db_schema: str | None = Field(default=None, description="Database schema name")
+    timestamps: bool = Field(
+        default=False, description="Enable automatic timestamp management"
+    )
+
+
 class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
     """Repository class using composition and inheritance"""
 
@@ -23,20 +34,22 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         search_class: type[S],
         update_class: type[U],
         table_name: str,
-        schema: str | None = None,
-        timestamps: bool = False,
+        config: RepositoryConfig | None = None,
     ):
         self.entity_class = entity_class
         self.search_class = search_class
         self.update_class = update_class
         self.table_name = table_name
-        self.schema = schema
-        self.timestamps = timestamps
-        self._qualified_table_name = f"{schema}.{table_name}" if schema else table_name
+        self.config = config or RepositoryConfig()
+        self._qualified_table_name = (
+            f"{self.config.db_schema}.{table_name}"
+            if self.config.db_schema
+            else table_name
+        )
         self._query_builder: QueryBuilder | None = None
 
         # Create a dynamic entity class with timestamp fields if timestamps are enabled
-        if timestamps:
+        if self.config.timestamps:
             self._entity_class_with_timestamps = (
                 self._create_entity_class_with_timestamps(entity_class)
             )
@@ -63,8 +76,7 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
             self.search_class,
             self.update_class,
             self.table_name,
-            self.schema,
-            self.timestamps,
+            self.config,
         )
         new_repo._query_builder = query_builder
         return new_repo
@@ -109,7 +121,7 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         self, data: dict[str, Any], is_create: bool = True
     ) -> dict[str, Any]:
         """Inject timestamp fields into the data dictionary"""
-        if not self.timestamps:
+        if not self.config.timestamps:
             return data
 
         timestamp = self._get_current_timestamp()
@@ -396,7 +408,7 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
             # Nothing to update
             return []
 
-        # SET clauses start at $1..$m
+        # SET clauses start at $1.$m
         set_clause = ", ".join(
             [f"{k} = ${i + 1}" for i, k in enumerate(update_dict.keys())]
         )

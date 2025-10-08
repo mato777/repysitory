@@ -76,12 +76,14 @@ async def demonstrate_timestamp_functionality():
             await conn.commit()
 
         # Create repository with timestamps enabled
+        from src.repository import RepositoryConfig
+
         post_repo = Repository(
             entity_class=BlogPost,
             search_class=BlogPostSearch,
             update_class=BlogPostUpdate,
             table_name="blog_posts",
-            timestamps=True,  # Enable automatic timestamps
+            config=RepositoryConfig(timestamps=True),  # Enable automatic timestamps
         )
 
         print("=== Automatic Timestamp Functionality Demo ===\n")
@@ -169,7 +171,7 @@ async def demonstrate_timestamp_functionality():
             search_class=BlogPostSearch,
             update_class=BlogPostUpdate,
             table_name="blog_posts",
-            timestamps=False,  # Disable timestamps
+            config=RepositoryConfig(timestamps=False),  # Disable timestamps
         )
 
         _test_post = BlogPost(

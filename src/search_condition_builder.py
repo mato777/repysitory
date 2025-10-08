@@ -20,7 +20,7 @@ class SearchConditionBuilder:
 
     @staticmethod
     def build_order_clause(sort_model: BaseModel | None) -> str:
-        """Build ORDER BY clause from sort model"""
+        """Build ORDER BY clause from a sort model"""
         if not sort_model:
             return ""
 

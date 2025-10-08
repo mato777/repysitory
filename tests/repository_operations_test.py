@@ -54,7 +54,15 @@ class TestPostRepositoryOperations:
     @transactional("test")
     async def test_schema_qualified_basic_crud(self):
         """Test basic CRUD on schema-qualified table app.posts."""
-        repo = Repository(Post, PostSearch, PostUpdate, "posts", schema="app")
+        from src.repository import RepositoryConfig
+
+        repo = Repository(
+            Post,
+            PostSearch,
+            PostUpdate,
+            "posts",
+            config=RepositoryConfig(db_schema="app"),
+        )
 
         post = Post(id=uuid4(), title="Schema Post", content="From app schema")
         await repo.create(post)

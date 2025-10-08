@@ -64,23 +64,27 @@ class TestTimestampFunctionality:
     @pytest.fixture
     def timestamped_repo(self):
         """Repository with timestamps enabled"""
+        from src.repository import RepositoryConfig
+
         return Repository(
             entity_class=TimestampedEntity,
             search_class=TimestampedEntitySearch,
             update_class=TimestampedEntityUpdate,
             table_name="timestamped_entities",
-            timestamps=True,
+            config=RepositoryConfig(timestamps=True),
         )
 
     @pytest.fixture
     def non_timestamped_repo(self):
         """Repository without timestamps"""
+        from src.repository import RepositoryConfig
+
         return Repository(
             entity_class=NonTimestampedEntity,
             search_class=NonTimestampedEntitySearch,
             update_class=NonTimestampedEntityUpdate,
             table_name="non_timestamped_entities",
-            timestamps=False,
+            config=RepositoryConfig(timestamps=False),
         )
 
     def test_timestamp_injection_on_create(self, timestamped_repo):
@@ -212,15 +216,17 @@ class TestTimestampFunctionality:
 
     def test_repository_constructor_with_timestamps(self):
         """Test Repository constructor with timestamps parameter"""
+        from src.repository import RepositoryConfig
+
         repo = Repository(
             entity_class=TimestampedEntity,
             search_class=TimestampedEntitySearch,
             update_class=TimestampedEntityUpdate,
             table_name="test_table",
-            timestamps=True,
+            config=RepositoryConfig(timestamps=True),
         )
 
-        assert repo.timestamps is True
+        assert repo.config.timestamps is True
         assert repo.entity_class == TimestampedEntity
         assert repo.search_class == TimestampedEntitySearch
         assert repo.update_class == TimestampedEntityUpdate
@@ -235,19 +241,21 @@ class TestTimestampFunctionality:
             table_name="test_table",
         )
 
-        assert repo.timestamps is False
+        assert repo.config.timestamps is False
 
     def test_repository_constructor_timestamps_default_false(self):
         """Test Repository constructor with timestamps defaulting to False"""
+        from src.repository import RepositoryConfig
+
         repo = Repository(
             entity_class=NonTimestampedEntity,
             search_class=NonTimestampedEntitySearch,
             update_class=NonTimestampedEntityUpdate,
             table_name="test_table",
-            timestamps=False,
+            config=RepositoryConfig(timestamps=False),
         )
 
-        assert repo.timestamps is False
+        assert repo.config.timestamps is False
 
     def test_clone_with_query_builder_preserves_timestamps_setting(
         self, timestamped_repo
@@ -258,9 +266,9 @@ class TestTimestampFunctionality:
         query_builder = QueryBuilder("test_table")
         cloned_repo = timestamped_repo._clone_with_query_builder(query_builder)
 
-        assert cloned_repo.timestamps is True
+        assert cloned_repo.config.timestamps is True
         assert cloned_repo.entity_class == timestamped_repo.entity_class
         assert cloned_repo.search_class == timestamped_repo.search_class
         assert cloned_repo.update_class == timestamped_repo.update_class
         assert cloned_repo.table_name == timestamped_repo.table_name
-        assert cloned_repo.schema == timestamped_repo.schema
+        assert cloned_repo.config.db_schema == timestamped_repo.config.db_schema

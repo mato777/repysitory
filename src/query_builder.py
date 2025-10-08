@@ -162,7 +162,7 @@ class QueryBuilder:
             import re
 
             alias_pattern = re.compile(
-                r"^(.*?)[\s]+as[\s]+([A-Za-z_][A-Za-z0-9_]*)$", re.IGNORECASE
+                r"^(.*?)\s+as\s+([A-Za-z_][A-Za-z0-9_]*)$", re.IGNORECASE
             )
             for raw in fields:
                 part = raw.strip()
@@ -182,8 +182,8 @@ class QueryBuilder:
         """Add a WHERE condition or grouped WHERE clause.
 
         Supports both of the following call styles:
-        - where(field, value)                      -> operator defaults to '='
-        - where(field, operator, value)            -> explicit operator in second place
+        - where(field, value) -> operator defaults to '='
+        - where(field, operator, value) -> explicit operator in the second place
 
         Grouped conditions via function remain supported: where(lambda qb: ...)
         """
@@ -208,8 +208,8 @@ class QueryBuilder:
         """Add an OR WHERE condition or grouped OR WHERE clause.
 
         Supports both of the following call styles:
-        - or_where(field, value)                   -> operator defaults to '='
-        - or_where(field, operator, value)         -> explicit operator in second place
+        - or_where(field, value) -> operator defaults to '='
+        - or_where(field, operator, value) -> explicit operator in the second place
         """
         if callable(field_or_function):
             return self.or_where_group(field_or_function)
@@ -252,7 +252,7 @@ class QueryBuilder:
     def where_any(
         self, conditions: tuple[str, Any, str] | list[tuple[str, Any, str]]
     ) -> "QueryBuilder":
-        """Add WHERE condition(s) - accepts either a single tuple or list of tuples.
+        """Add WHERE condition(s) - accepts either a single tuple or a list of tuples.
 
         Expects tuple order: (field, operator, value)
         """
@@ -264,7 +264,7 @@ class QueryBuilder:
     def or_where_any(
         self, conditions: tuple[str, Any, str] | list[tuple[str, Any, str]]
     ) -> "QueryBuilder":
-        """Add OR WHERE condition(s) - accepts either a single tuple or list of tuples.
+        """Add OR WHERE condition(s) - accepts either a single tuple or a list of tuples.
 
         Expects tuple order: (field, operator, value)
         """
@@ -361,8 +361,8 @@ class QueryBuilder:
         """Add a HAVING condition.
 
         Supports both of the following call styles:
-        - having(field, value)                   -> operator defaults to '='
-        - having(field, operator, value)         -> explicit operator in second place
+        - having(field, value) -> operator defaults to '='
+        - having (field, operator, value) -> explicit operator in the second place
         """
         new_builder = self._clone()
         if len(args) == 2:
@@ -374,7 +374,7 @@ class QueryBuilder:
                 "having() expects (field, value) or (field, operator, value)"
             )
 
-        # Resolve aliases from SELECT list, if any
+        # Resolve aliases from the SELECT list, if any
         resolved_field = new_builder.select_alias_map.get(field, field)
         param_index = len(new_builder.params) + 1
         condition = f"{resolved_field} {operator} ${param_index}"
@@ -396,7 +396,7 @@ class QueryBuilder:
 
     def paginate(self, page: int, per_page: int = 10) -> "QueryBuilder":
         """
-        Set pagination parameters using page-based interface
+        Set pagination parameters using a page-based interface
 
         Args:
             page: Page number (1-based)

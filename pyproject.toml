@@ -22,7 +22,7 @@ dev = [
 ]
 
 [tool.taskipy.tasks]
-# Run full test suite with coverage
+# Run a full test suite with coverage
 test = "pytest --cov=src --cov-report=html"
 
 # Use pre-commit as the single source of truth for Ruff lint/format

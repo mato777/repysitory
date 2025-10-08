@@ -60,12 +60,14 @@ class TestTimestampIntegration:
                 )
             """)
 
+        from src.repository import RepositoryConfig
+
         return Repository(
             entity_class=TimestampedPost,
             search_class=TimestampedPostSearch,
             update_class=TimestampedPostUpdate,
             table_name="timestamped_posts",
-            timestamps=True,
+            config=RepositoryConfig(timestamps=True),
         )
 
     @pytest_asyncio.fixture
@@ -82,12 +84,14 @@ class TestTimestampIntegration:
                 )
             """)
 
+        from src.repository import RepositoryConfig
+
         return Repository(
             entity_class=TimestampedPost,
             search_class=TimestampedPostSearch,
             update_class=TimestampedPostUpdate,
             table_name="non_timestamped_posts",
-            timestamps=False,
+            config=RepositoryConfig(timestamps=False),
         )
 
     @pytest.mark.asyncio

@@ -48,12 +48,14 @@ async def timestamped_repo(test_db_pool):
             """
         )
 
+    from src.repository import RepositoryConfig
+
     return Repository(
         entity_class=TPost,
         search_class=TPostSearch,
         update_class=TPostUpdate,
         table_name="timestamped_posts",
-        timestamps=True,
+        config=RepositoryConfig(timestamps=True),
     )
 
 
