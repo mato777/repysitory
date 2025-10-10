@@ -30,7 +30,7 @@ class TestRepositoryEdgeCases:
         from src.db_context import transactional
 
         # This tests line 68 in repository.py - early return None when search_dict is empty
-        @transactional("test")
+        @transactional("test_db")
         async def test_empty_search():
             # Create a search with all None values
             empty_search = PostSearch()  # All fields are None

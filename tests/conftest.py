@@ -53,7 +53,7 @@ async def test_db_pool(postgres_container):
         )
 
     # Add pool to DatabaseManager
-    await DatabaseManager.add_pool("test", pool)
+    await DatabaseManager.add_pool("test_db", pool)
 
     yield pool
 

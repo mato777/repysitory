@@ -21,7 +21,7 @@ class TestGroupByAndHaving:
         return Repository(PostEntity, PostSearchArgs, PostUpdateArgs, "posts")
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_group_by_basic_counts(self, repository):
         # Insert sample data
         posts = [
@@ -57,7 +57,7 @@ class TestGroupByAndHaving:
         assert counts["lifestyle"] == 1
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_group_by_having_filter(self, repository):
         # Insert sample data
         posts = [
@@ -93,7 +93,7 @@ class TestGroupByAndHaving:
         assert rows[0]["total"] == 3
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_group_by_having_chaining_with_alias(self, repository):
         # Insert sample data to produce counts: tech=3, lifestyle=2, personal=1
         posts = [
@@ -140,7 +140,7 @@ class TestGroupByAndHaving:
         assert rows[0]["total"] == 2
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_group_by_having_chaining_mixed_alias_and_expression(
         self, repository
     ):

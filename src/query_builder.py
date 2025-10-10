@@ -51,15 +51,29 @@ class QueryBuilder:
     ) -> "QueryBuilder":
         """Add a condition to either WHERE or OR WHERE clauses"""
         new_builder = self._clone()
-        param_index = len(new_builder.params) + 1
-        condition = f"{field} {operator} ${param_index}"
+
+        # Handle None values with IS NULL / IS NOT NULL
+        if value is None:
+            if operator == "=":
+                condition = f"{field} IS NULL"
+            elif operator in ("!=", "<>"):
+                condition = f"{field} IS NOT NULL"
+            else:
+                # For other operators with None, treat as standard comparison
+                # This might not make logical sense but maintains backward compatibility
+                param_index = len(new_builder.params) + 1
+                condition = f"{field} {operator} ${param_index}"
+                new_builder.params.append(value)
+        else:
+            param_index = len(new_builder.params) + 1
+            condition = f"{field} {operator} ${param_index}"
+            new_builder.params.append(value)
 
         if is_or:
             new_builder.or_where_conditions.append(condition)
         else:
             new_builder.where_conditions.append(condition)
 
-        new_builder.params.append(value)
         return new_builder
 
     def _add_in_condition(

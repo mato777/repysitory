@@ -91,9 +91,9 @@ class TestTimestampFunctionality:
         """Test that timestamps are injected when creating entities"""
         entity = TimestampedEntity(name="Test Entity", description="Test Description")
 
-        # Test timestamp injection
+        # Test timestamp injection using feature hooks
         fields = entity.model_dump()
-        injected_fields = timestamped_repo._inject_timestamps(fields, is_create=True)
+        injected_fields = timestamped_repo._apply_feature_hooks(fields, is_create=True)
 
         assert "created_at" in injected_fields
         assert "updated_at" in injected_fields
@@ -108,7 +108,7 @@ class TestTimestampFunctionality:
         """Test that only updated_at is injected when updating entities"""
         update_data = {"name": "Updated Name"}
 
-        injected_data = timestamped_repo._inject_timestamps(
+        injected_data = timestamped_repo._apply_feature_hooks(
             update_data, is_create=False
         )
 
@@ -127,7 +127,7 @@ class TestTimestampFunctionality:
         )
 
         fields = entity.model_dump()
-        injected_fields = non_timestamped_repo._inject_timestamps(
+        injected_fields = non_timestamped_repo._apply_feature_hooks(
             fields, is_create=True
         )
 
@@ -143,7 +143,7 @@ class TestTimestampFunctionality:
             "description": "Test Description",
         }
 
-        injected_data = timestamped_repo._inject_timestamps(
+        injected_data = timestamped_repo._apply_feature_hooks(
             original_data, is_create=True
         )
 
@@ -165,9 +165,9 @@ class TestTimestampFunctionality:
         data1 = {"name": "Entity 1"}
         data2 = {"name": "Entity 2"}
 
-        injected1 = timestamped_repo._inject_timestamps(data1, is_create=True)
+        injected1 = timestamped_repo._apply_feature_hooks(data1, is_create=True)
         time.sleep(0.001)  # Small delay to ensure different timestamps
-        injected2 = timestamped_repo._inject_timestamps(data2, is_create=True)
+        injected2 = timestamped_repo._apply_feature_hooks(data2, is_create=True)
 
         assert injected1["created_at"] != injected2["created_at"]
         assert injected1["updated_at"] != injected2["updated_at"]
@@ -175,7 +175,7 @@ class TestTimestampFunctionality:
     def test_timestamp_format_is_datetime_object(self, timestamped_repo):
         """Test that timestamps are datetime objects"""
         data = {"name": "Test Entity"}
-        injected_data = timestamped_repo._inject_timestamps(data, is_create=True)
+        injected_data = timestamped_repo._apply_feature_hooks(data, is_create=True)
 
         timestamp = injected_data["created_at"]
 
@@ -187,7 +187,9 @@ class TestTimestampFunctionality:
         """Test timestamp injection with empty data dictionary"""
         empty_data = {}
 
-        injected_data = timestamped_repo._inject_timestamps(empty_data, is_create=True)
+        injected_data = timestamped_repo._apply_feature_hooks(
+            empty_data, is_create=True
+        )
 
         assert len(injected_data) == 2
         assert "created_at" in injected_data
@@ -201,7 +203,7 @@ class TestTimestampFunctionality:
             "optional_field": None,
         }
 
-        injected_data = timestamped_repo._inject_timestamps(
+        injected_data = timestamped_repo._apply_feature_hooks(
             data_with_none, is_create=True
         )
 

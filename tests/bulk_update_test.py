@@ -8,7 +8,7 @@ from tests.post_repository import PostRepository
 
 
 @pytest.mark.asyncio
-@transactional("test")
+@transactional("test_db")
 async def test_update_many_by_ids_returns_updated_entities():
     repo = PostRepository()
 
@@ -45,7 +45,7 @@ async def test_update_many_by_ids_returns_updated_entities():
 
 
 @pytest.mark.asyncio
-@transactional("test")
+@transactional("test_db")
 async def test_update_many_by_ids_with_empty_ids_returns_empty_list():
     repo = PostRepository()
 
@@ -65,7 +65,7 @@ async def test_update_many_by_ids_with_empty_ids_returns_empty_list():
 
 
 @pytest.mark.asyncio
-@transactional("test")
+@transactional("test_db")
 async def test_update_many_by_ids_with_no_update_fields_makes_no_changes():
     repo = PostRepository()
 

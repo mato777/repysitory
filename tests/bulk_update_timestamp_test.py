@@ -60,7 +60,7 @@ async def timestamped_repo(test_db_pool):
 
 
 @pytest.mark.asyncio
-@transactional("test")
+@transactional("test_db")
 async def test_update_many_sets_new_updated_at_for_all_rows(
     timestamped_repo: Repository[TPost, TPostSearch, TPostUpdate],
 ):

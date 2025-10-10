@@ -32,7 +32,7 @@ class TestPostRepositoryOperations:
         ]
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_create_and_find_by_id(self, post_repo):
         """Test creating a post and finding it by ID."""
         # Create a post
@@ -51,7 +51,7 @@ class TestPostRepositoryOperations:
         assert found_post.content == post.content
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_schema_qualified_basic_crud(self):
         """Test basic CRUD on schema-qualified table app.posts."""
         from src.repository import RepositoryConfig
@@ -82,7 +82,7 @@ class TestPostRepositoryOperations:
         assert not_found is None
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_find_by_id_not_found(self, post_repo):
         """Test finding a non-existent post returns None."""
         non_existent_id = uuid4()
@@ -90,7 +90,7 @@ class TestPostRepositoryOperations:
         assert found_post is None
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_create_many(self, post_repo, sample_posts):
         """Test creating multiple posts at once."""
         created_posts = await post_repo.create_many(sample_posts)
@@ -108,7 +108,7 @@ class TestPostRepositoryOperations:
             assert found_post is not None
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_find_one_by_search(self, post_repo, sample_posts):
         """Test finding a single post using search criteria."""
         await post_repo.create_many(sample_posts)
@@ -122,7 +122,7 @@ class TestPostRepositoryOperations:
         assert found_post.content == "This is the first post"
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_find_one_by_multiple_criteria(self, post_repo, sample_posts):
         """Test finding a post with multiple search criteria."""
         await post_repo.create_many(sample_posts)
@@ -135,7 +135,7 @@ class TestPostRepositoryOperations:
         assert found_post.title == "First Post"
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_find_many_by_search(self, post_repo, sample_posts):
         """Test finding multiple posts using search criteria."""
         await post_repo.create_many(sample_posts)
@@ -151,7 +151,7 @@ class TestPostRepositoryOperations:
         assert len(found_posts) == len(sample_posts)
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_sorting_single_field(self, post_repo, sample_posts):
         """Test sorting by a single field."""
         await post_repo.create_many(sample_posts)
@@ -165,7 +165,7 @@ class TestPostRepositoryOperations:
         assert titles[0] == "Alpha Post"  # Should come first alphabetically
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_sorting_descending(self, post_repo, sample_posts):
         """Test sorting in descending order."""
         await post_repo.create_many(sample_posts)
@@ -179,7 +179,7 @@ class TestPostRepositoryOperations:
         assert titles[0] == "Third Post"  # Should come first in reverse order
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_sorting_multiple_fields(self, post_repo):
         """Test sorting by multiple fields."""
         # Create posts with same title but different content
@@ -202,7 +202,7 @@ class TestPostRepositoryOperations:
         assert sorted_posts[2].content == "B Content"
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_search_and_sort_combined(self, post_repo):
         """Test combining search criteria with sorting."""
         posts = [
@@ -222,7 +222,7 @@ class TestPostRepositoryOperations:
         assert found_posts[1].title == "Test B"
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_update(self, post_repo):
         """Test updating a post."""
         # Create a post
@@ -243,7 +243,7 @@ class TestPostRepositoryOperations:
         assert found_post.title == "Updated Title"
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_delete(self, post_repo):
         """Test deleting a post."""
         # Create a post
@@ -263,7 +263,7 @@ class TestPostRepositoryOperations:
         assert found_post is None
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_delete_many(self, post_repo, sample_posts):
         """Test deleting multiple posts."""
         await post_repo.create_many(sample_posts)
@@ -284,7 +284,7 @@ class TestPostRepositoryOperations:
         assert len(remaining_posts) == 2
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_convenience_methods(self, post_repo, sample_posts):
         """Test convenience methods."""
         await post_repo.create_many(sample_posts)
@@ -300,13 +300,13 @@ class TestPostRepositoryOperations:
         assert titles == sorted(titles)
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_transaction_rollback(self, post_repo):
         """Test that transactions rollback on error."""
         post = Post(id=uuid4(), title="Test", content="Test")
 
         try:
-            async with DatabaseManager.transaction("test"):
+            async with DatabaseManager.transaction("test_db"):
                 await post_repo.create(post)
                 # Verify it exists within transaction
                 found = await post_repo.find_by_id(post.id)
@@ -322,7 +322,7 @@ class TestPostRepositoryOperations:
         assert found_post is None
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_transaction_commit(self, post_repo):
         """Test that transactions commit successfully."""
         posts = [
@@ -330,7 +330,7 @@ class TestPostRepositoryOperations:
             Post(id=uuid4(), title="Post 2", content="Content 2"),
         ]
 
-        async with DatabaseManager.transaction("test"):
+        async with DatabaseManager.transaction("test_db"):
             await post_repo.create(posts[0])
             await post_repo.create(posts[1])
             # Both should be visible within the transaction
@@ -342,7 +342,7 @@ class TestPostRepositoryOperations:
         assert len(found_posts) == 2
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_find_one_by_no_results_found(self, post_repo):
         """Test that find_one_by returns None when no matching records are found"""
         # This tests the case where fetchrow returns None (line 67 in repository.py)

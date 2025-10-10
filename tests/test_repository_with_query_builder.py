@@ -111,7 +111,7 @@ class TestRepositoryWithQueryBuilder:
             )
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_basic_where_condition(self, repository, sample_posts):
         """Test basic WHERE condition using fluent interface"""
         await self.setup_test_data(sample_posts)
@@ -122,7 +122,7 @@ class TestRepositoryWithQueryBuilder:
         assert all(post.published for post in published_posts)
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_chained_where_conditions(self, repository, sample_posts):
         """Test chaining multiple WHERE conditions"""
         await self.setup_test_data(sample_posts)
@@ -137,7 +137,7 @@ class TestRepositoryWithQueryBuilder:
         )
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_where_with_operators(self, repository, sample_posts):
         """Test WHERE conditions with different operators"""
         await self.setup_test_data(sample_posts)
@@ -148,7 +148,7 @@ class TestRepositoryWithQueryBuilder:
         assert all(not post.published for post in not_published)
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_where_in_condition(self, repository, sample_posts):
         """Test WHERE IN condition"""
         await self.setup_test_data(sample_posts)
@@ -161,7 +161,7 @@ class TestRepositoryWithQueryBuilder:
         assert all(post.category in ["tech", "lifestyle"] for post in tech_lifestyle)
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_where_not_in_condition(self, repository, sample_posts):
         """Test WHERE NOT IN condition"""
         await self.setup_test_data(sample_posts)
@@ -172,7 +172,7 @@ class TestRepositoryWithQueryBuilder:
         assert all(post.category != "tech" for post in not_tech)
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_or_where_condition(self, repository, sample_posts):
         """Test OR WHERE condition"""
         await self.setup_test_data(sample_posts)
@@ -187,7 +187,7 @@ class TestRepositoryWithQueryBuilder:
         assert all(post.category in ["tech", "lifestyle"] for post in tech_or_lifestyle)
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_order_by_clause(self, repository, sample_posts):
         """Test ORDER BY clause"""
         await self.setup_test_data(sample_posts)
@@ -199,7 +199,7 @@ class TestRepositoryWithQueryBuilder:
         assert titles == sorted(titles)
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_limit_clause(self, repository, sample_posts):
         """Test LIMIT clause"""
         await self.setup_test_data(sample_posts)
@@ -209,7 +209,7 @@ class TestRepositoryWithQueryBuilder:
         assert len(limited_posts) == 3
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_offset_clause(self, repository, sample_posts):
         """Test OFFSET clause"""
         await self.setup_test_data(sample_posts)
@@ -220,7 +220,7 @@ class TestRepositoryWithQueryBuilder:
         assert len(offset_posts) == len(all_posts) - 2
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_paginate_method(self, repository, sample_posts):
         """Test pagination"""
         await self.setup_test_data(sample_posts)
@@ -235,7 +235,7 @@ class TestRepositoryWithQueryBuilder:
         assert len(page_3) == 1  # Last page with remaining record
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_complex_chaining(self, repository, sample_posts):
         """Test complex method chaining"""
         await self.setup_test_data(sample_posts)
@@ -254,7 +254,7 @@ class TestRepositoryWithQueryBuilder:
         assert all(post.category in ["tech", "lifestyle"] for post in results)
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_first_method(self, repository, sample_posts):
         """Test first() method"""
         await self.setup_test_data(sample_posts)
@@ -269,7 +269,7 @@ class TestRepositoryWithQueryBuilder:
         assert no_result is None
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_count_method(self, repository, sample_posts):
         """Test count() method"""
         await self.setup_test_data(sample_posts)
@@ -285,7 +285,7 @@ class TestRepositoryWithQueryBuilder:
         assert tech_count == 3
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_exists_method(self, repository, sample_posts):
         """Test exists() method"""
         await self.setup_test_data(sample_posts)
@@ -345,7 +345,7 @@ class TestRepositoryWithQueryBuilder:
         assert limited_repo is not original_repo
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_empty_repository_get(self, repository, sample_posts):
         """Test calling get() on repository without any conditions"""
         await self.setup_test_data(sample_posts)
@@ -354,7 +354,7 @@ class TestRepositoryWithQueryBuilder:
         assert len(all_posts) == 5
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_mixed_and_or_conditions(self, repository, sample_posts):
         """Test mixing AND and OR conditions"""
         await self.setup_test_data(sample_posts)
@@ -370,7 +370,7 @@ class TestRepositoryWithQueryBuilder:
         assert len(results) == 4
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_query_builder_reset_between_calls(self, repository, sample_posts):
         """Test that query builder state doesn't leak between different query calls"""
         await self.setup_test_data(sample_posts)
@@ -388,7 +388,7 @@ class TestRepositoryWithQueryBuilder:
         assert len(published_posts) == 3
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_method_chaining_order_independence(self, repository, sample_posts):
         """Test that method chaining order doesn't affect the final result for commutative operations"""
         await self.setup_test_data(sample_posts)

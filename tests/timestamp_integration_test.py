@@ -95,7 +95,7 @@ class TestTimestampIntegration:
         )
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_create_with_timestamps(self, timestamped_post_repo):
         """Test creating an entity with automatic timestamps"""
         post = TimestampedPost(
@@ -120,7 +120,7 @@ class TestTimestampIntegration:
         assert created_post.published is True
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_create_without_timestamps(self, non_timestamped_post_repo):
         """Test creating an entity without timestamps"""
         post = TimestampedPost(
@@ -139,7 +139,7 @@ class TestTimestampIntegration:
         assert created_post.published is True
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_create_many_with_timestamps(self, timestamped_post_repo):
         """Test creating multiple entities with timestamps"""
         posts = [
@@ -157,7 +157,7 @@ class TestTimestampIntegration:
             assert post.created_at == post.updated_at
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_update_with_timestamps(self, timestamped_post_repo):
         """Test updating an entity with automatic timestamp update"""
         # Create initial post
@@ -191,7 +191,7 @@ class TestTimestampIntegration:
         assert updated_post.content == "Original content"  # Should remain unchanged
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_find_by_id_with_timestamps(self, timestamped_post_repo):
         """Test finding entity by ID includes timestamps"""
         post = TimestampedPost(
@@ -211,7 +211,7 @@ class TestTimestampIntegration:
         assert hasattr(found_post, "updated_at")
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_find_many_by_with_timestamps(self, timestamped_post_repo):
         """Test finding multiple entities includes timestamps"""
         # Create multiple posts
@@ -234,7 +234,7 @@ class TestTimestampIntegration:
         assert hasattr(found_post, "updated_at")
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_timestamp_consistency_across_operations(self, timestamped_post_repo):
         """Test that timestamps remain consistent across operations"""
         post = TimestampedPost(
@@ -265,7 +265,7 @@ class TestTimestampIntegration:
         assert updated_post.updated_at > updated_at  # Should be newer
 
     @pytest.mark.asyncio
-    @transactional("test")
+    @transactional("test_db")
     async def test_timestamp_search_functionality(self, timestamped_post_repo):
         """Test searching by timestamp fields"""
         post = TimestampedPost(

@@ -149,10 +149,30 @@ Tips
   - `exists()` - Check if any records match
 - **Repository Configuration** - Type-safe configuration using `RepositoryConfig`
   - `db_schema` - Optional database schema name for multi-schema support
-  - `timestamps` - Enable automatic `created_at` and `updated_at` management
-- **Automatic Timestamps** - Optional `created_at` and `updated_at` management
+  - `timestamps` - Enable automatic `created_at` and `updated_at` management (backward compatible)
+  - `features` - Extensible feature system for pluggable functionality
 - **Schema Support** - Multi-schema database support
 - **Pydantic Integration** - Full Pydantic model support for entities, search, and updates
+
+### Repository Feature System ⭐ NEW
+- **Pluggable Features** - Composable feature system for adding functionality
+- **Built-in Features**
+  - `TimestampFeature` - Automatic `created_at` and `updated_at` management
+- **Custom Features** - Easy to create custom features by implementing `RepositoryFeature`
+  - `before_create(data)` - Hook called before entity creation
+  - `before_update(data)` - Hook called before entity update
+  - `augment_entity_class(entity_class)` - Hook to add fields to entity class
+- **Feature Composition** - Combine multiple features in a single repository
+- **Example Custom Features**
+  - Soft Delete (adds `deleted_at` field)
+  - Audit Logging (adds `created_by`, `updated_by` fields)
+  - Data Validation (validates before create/update)
+  - See `examples/feature_system_example.py` for full examples
+- **Benefits**
+  - Single Responsibility - Each feature has one job
+  - Composability - Mix and match features as needed
+  - Extensibility - Add features without modifying Repository
+  - Testability - Test features in isolation
 
 ### Database Context & Transaction Management
 - **Connection Pooling** - Named database pool management with `DatabaseManager`

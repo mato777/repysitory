@@ -16,7 +16,7 @@ async def test_connection_released_on_exception_sequential():
 
     for _ in range(iterations):
         try:
-            async with DatabaseManager.transaction("test"):
+            async with DatabaseManager.transaction("test_db"):
                 # Do a trivial statement to touch the DB
                 pass
                 # Raise an error to force rollback and context exit via exception
@@ -33,7 +33,7 @@ async def test_connection_released_on_exception_concurrent():
 
     async def failing_tx():
         try:
-            async with DatabaseManager.transaction("test"):
+            async with DatabaseManager.transaction("test_db"):
                 # Simulate some small async work
                 await asyncio.sleep(0)
                 raise RuntimeError("boom")
