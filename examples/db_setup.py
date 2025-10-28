@@ -92,6 +92,14 @@ async def cleanup_example_data(pool_name: str = "default"):
         print(f"⚠️  Could not clean up data: {e}")
 
 
+async def get_pool(pool_name: str = "default"):
+    """
+    Get a database pool by name.
+    Shorthand for DatabaseManager.get_pool().
+    """
+    return await DatabaseManager.get_pool(pool_name)
+
+
 async def close_connections():
     """
     Close all database connections (call this at the end of examples).

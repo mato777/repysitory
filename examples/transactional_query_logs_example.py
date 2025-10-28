@@ -10,7 +10,6 @@ from uuid import uuid4
 
 from examples.db_setup import get_pool
 from src.db_context import DatabaseManager, transactional
-from src.entities import User, UserSearch, UserUpdate
 from src.repository import Repository
 
 
@@ -18,10 +17,19 @@ from src.repository import Repository
 @transactional(query_logs=True)
 async def create_user_with_logs(name: str, email: str):
     """Create a user and automatically log all queries"""
-    user_repo = Repository(User, UserSearch, UserUpdate, "users")
+    from examples.enforced_search_example import User, UserUpdate
+
+    user_repo = Repository(User, User, UserUpdate, "users")
 
     user_id = uuid4()
-    new_user = User(id=user_id, name=name, email=email)
+    new_user = User(
+        id=user_id,
+        email=email,
+        username=name,
+        password_hash="pass",
+        full_name=name,
+        is_active=True,
+    )
     created_user = await user_repo.create(new_user)
 
     # Access the query tracker
@@ -39,10 +47,19 @@ async def create_user_with_logs(name: str, email: str):
 @transactional()
 async def create_user_without_logs(name: str, email: str):
     """Create a user without query logging"""
-    user_repo = Repository(User, UserSearch, UserUpdate, "users")
+    from examples.enforced_search_example import User, UserUpdate
+
+    user_repo = Repository(User, User, UserUpdate, "users")
 
     user_id = uuid4()
-    new_user = User(id=user_id, name=name, email=email)
+    new_user = User(
+        id=user_id,
+        email=email,
+        username=name,
+        password_hash="pass",
+        full_name=name,
+        is_active=True,
+    )
     created_user = await user_repo.create(new_user)
 
     tracker = Repository.get_query_tracker()
@@ -56,17 +73,26 @@ async def create_user_without_logs(name: str, email: str):
 @transactional(query_logs=True)
 async def create_and_analyze_users(count: int):
     """Create multiple users and analyze the queries"""
-    user_repo = Repository(User, UserSearch, UserUpdate, "users")
+    from examples.enforced_search_example import User, UserUpdate
+
+    user_repo = Repository(User, User, UserUpdate, "users")
 
     # Create multiple users
     users = [
-        User(id=uuid4(), name=f"User {i}", email=f"user{i}@example.com")
+        User(
+            id=uuid4(),
+            email=f"user{i}@example.com",
+            username=f"User{i}",
+            password_hash="pass",
+            full_name=f"User {i}",
+            is_active=True,
+        )
         for i in range(count)
     ]
     await user_repo.create_many(users)
 
     # Query users
-    found_users = await user_repo.where("name", "LIKE", "User%").get()
+    found_users = await user_repo.where("username", "LIKE", "User%").get()
 
     # Count users
     user_count = await user_repo.count()
@@ -93,14 +119,23 @@ async def create_and_analyze_users(count: int):
 @transactional(query_logs=True)
 async def operation_with_audit_log():
     """Perform operations and export queries for audit logging"""
-    user_repo = Repository(User, UserSearch, UserUpdate, "users")
+    from examples.enforced_search_example import User, UserUpdate
+
+    user_repo = Repository(User, User, UserUpdate, "users")
 
     user_id = uuid4()
-    new_user = User(id=user_id, name="Audited User", email="audit@example.com")
+    new_user = User(
+        id=user_id,
+        email="audit@example.com",
+        username="Audited User",
+        password_hash="pass",
+        full_name="Audited User",
+        is_active=True,
+    )
     await user_repo.create(new_user)
 
     # Update the user
-    await user_repo.update(user_id, UserUpdate(name="Updated Audited User"))
+    await user_repo.update(user_id, UserUpdate(full_name="Updated Audited User"))
 
     # Export queries for audit log
     tracker = Repository.get_query_tracker()
@@ -131,11 +166,20 @@ async def outer_operation():
     """Outer operation with query tracking"""
     print("\n=== Outer Operation ===")
 
-    user_repo = Repository(User, UserSearch, UserUpdate, "users")
+    from examples.enforced_search_example import User, UserUpdate
+
+    user_repo = Repository(User, User, UserUpdate, "users")
     user_id = uuid4()
 
     # Create a user in outer function
-    new_user = User(id=user_id, name="Outer User", email="outer@example.com")
+    new_user = User(
+        id=user_id,
+        email="outer@example.com",
+        username="Outer User",
+        password_hash="pass",
+        full_name="Outer User",
+        is_active=True,
+    )
     await user_repo.create(new_user)
 
     # Call inner function (uses same transaction and tracker)
@@ -155,11 +199,20 @@ async def outer_operation():
 @transactional()  # Uses same transaction from outer
 async def inner_operation():
     """Inner operation (shares transaction)"""
-    user_repo = Repository(User, UserSearch, UserUpdate, "users")
+    from examples.enforced_search_example import User, UserUpdate
+
+    user_repo = Repository(User, User, UserUpdate, "users")
 
     # Create another user
     user_id = uuid4()
-    new_user = User(id=user_id, name="Inner User", email="inner@example.com")
+    new_user = User(
+        id=user_id,
+        email="inner@example.com",
+        username="Inner User",
+        password_hash="pass",
+        full_name="Inner User",
+        is_active=True,
+    )
     await user_repo.create(new_user)
 
     # This shares the same tracker from outer
@@ -172,11 +225,20 @@ async def inner_operation():
 @transactional(query_logs=True)
 async def operation_that_may_fail(should_fail: bool = False):
     """Demonstrate query tracking with error handling"""
-    user_repo = Repository(User, UserSearch, UserUpdate, "users")
+    from examples.enforced_search_example import User, UserUpdate
+
+    user_repo = Repository(User, User, UserUpdate, "users")
 
     try:
         user_id = uuid4()
-        new_user = User(id=user_id, name="Test User", email="test@example.com")
+        new_user = User(
+            id=user_id,
+            email="test@example.com",
+            username="Test User",
+            password_hash="pass",
+            full_name="Test User",
+            is_active=True,
+        )
         await user_repo.create(new_user)
 
         if should_fail:
@@ -206,9 +268,18 @@ async def conditional_logging_example():
 
     @transactional(query_logs=debug_mode)
     async def flexible_operation():
-        user_repo = Repository(User, UserSearch, UserUpdate, "users")
+        from examples.enforced_search_example import User, UserUpdate
+
+        user_repo = Repository(User, User, UserUpdate, "users")
         user_id = uuid4()
-        new_user = User(id=user_id, name="Flex User", email="flex@example.com")
+        new_user = User(
+            id=user_id,
+            email="flex@example.com",
+            username="Flex User",
+            password_hash="pass",
+            full_name="Flex User",
+            is_active=True,
+        )
         await user_repo.create(new_user)
 
         tracker = Repository.get_query_tracker()

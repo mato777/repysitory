@@ -8,9 +8,8 @@ all SQL queries executed within a transaction context.
 import asyncio
 from uuid import uuid4
 
-from examples.db_setup import get_pool
+from examples.enforced_search_example import User, UserUpdate
 from src.db_context import DatabaseManager
-from src.entities import User, UserSearch, UserUpdate
 from src.repository import Repository
 
 
@@ -18,7 +17,7 @@ async def basic_query_tracking():
     """Basic example: Track queries in a transaction context"""
     print("\n=== Basic Query Tracking ===")
 
-    user_repo = Repository(User, UserSearch, UserUpdate, "users")
+    user_repo = Repository(User, User, UserUpdate, "users")
     user_id = uuid4()
 
     # Method 1: Using track_queries context manager
@@ -27,7 +26,14 @@ async def basic_query_tracking():
         DatabaseManager.track_queries() as tracker,
     ):
         # Create a user
-        new_user = User(id=user_id, name="Alice", email="alice@example.com")
+        new_user = User(
+            id=user_id,
+            email="alice@example.com",
+            username="Alice",
+            password_hash="password",
+            full_name="Alice Smith",
+            is_active=True,
+        )
         await user_repo.create(new_user)
 
         # Find the user
@@ -47,7 +53,7 @@ async def tracking_with_fluent_queries():
     """Track queries using fluent interface"""
     print("\n=== Tracking Fluent Queries ===")
 
-    user_repo = Repository(User, UserSearch, UserUpdate, "users")
+    user_repo = Repository(User, User, UserUpdate, "users")
 
     async with (
         DatabaseManager.transaction(),
@@ -55,8 +61,8 @@ async def tracking_with_fluent_queries():
     ):
         # Complex query with fluent interface
         users = await (
-            user_repo.where("name", "LIKE", "A%")
-            .order_by_desc("created_at")
+            user_repo.where("username", "LIKE", "A%")
+            .order_by_desc("id")
             .limit(10)
             .get()
         )
@@ -72,7 +78,7 @@ async def tracking_multiple_operations():
     """Track multiple repository operations"""
     print("\n=== Tracking Multiple Operations ===")
 
-    user_repo = Repository(User, UserSearch, UserUpdate, "users")
+    user_repo = Repository(User, User, UserUpdate, "users")
 
     async with (
         DatabaseManager.transaction(),
@@ -80,16 +86,23 @@ async def tracking_multiple_operations():
     ):
         # Create multiple users
         users_to_create = [
-            User(id=uuid4(), name=f"User {i}", email=f"user{i}@example.com")
+            User(
+                id=uuid4(),
+                email=f"user{i}@example.com",
+                username=f"User{i}",
+                password_hash="pass",
+                full_name=f"User {i}",
+                is_active=True,
+            )
             for i in range(3)
         ]
         await user_repo.create_many(users_to_create)
 
         # Find users
-        all_users = await user_repo.where("name", "LIKE", "User%").get()
+        all_users = await user_repo.where("username", "LIKE", "User%").get()
 
         # Count users
-        count = await user_repo.where("name", "LIKE", "User%").count()
+        count = await user_repo.where("username", "LIKE", "User%").count()
 
         print(f"\nTotal queries: {tracker.count()}")
         print(f"Users created: {len(users_to_create)}")
@@ -111,12 +124,19 @@ async def tracking_with_transaction_parameter():
     """Track queries using transaction parameter"""
     print("\n=== Tracking with Transaction Parameter ===")
 
-    user_repo = Repository(User, UserSearch, UserUpdate, "users")
+    user_repo = Repository(User, User, UserUpdate, "users")
     user_id = uuid4()
 
     # Method 2: Enable tracking directly in transaction
     async with DatabaseManager.transaction(track_queries=True):
-        new_user = User(id=user_id, name="Bob", email="bob@example.com")
+        new_user = User(
+            id=user_id,
+            email="bob@example.com",
+            username="Bob",
+            password_hash="pass",
+            full_name="Bob Smith",
+            is_active=True,
+        )
         await user_repo.create(new_user)
 
         await user_repo.find_by_id(user_id)
@@ -135,7 +155,7 @@ async def export_queries_to_dict():
     """Export tracked queries to dictionary format"""
     print("\n=== Export Queries to Dictionary ===")
 
-    user_repo = Repository(User, UserSearch, UserUpdate, "users")
+    user_repo = Repository(User, User, UserUpdate, "users")
 
     async with (
         DatabaseManager.transaction(),
@@ -158,7 +178,7 @@ async def conditional_tracking():
     """Demonstrate conditional query tracking"""
     print("\n=== Conditional Tracking ===")
 
-    user_repo = Repository(User, UserSearch, UserUpdate, "users")
+    user_repo = Repository(User, User, UserUpdate, "users")
     debug_mode = True  # Could be based on environment variable
 
     async with DatabaseManager.transaction():
@@ -177,7 +197,7 @@ async def nested_tracking():
     """Demonstrate nested tracking contexts"""
     print("\n=== Nested Tracking ===")
 
-    user_repo = Repository(User, UserSearch, UserUpdate, "users")
+    user_repo = Repository(User, User, UserUpdate, "users")
 
     async with (
         DatabaseManager.transaction(),
@@ -202,6 +222,8 @@ async def nested_tracking():
 
 async def main():
     """Run all examples"""
+    from examples.db_setup import get_pool
+
     # Setup database
     pool = await get_pool()
     await DatabaseManager.add_pool("default", pool)

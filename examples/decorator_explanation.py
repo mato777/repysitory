@@ -79,7 +79,7 @@ class PostService:
             )
 
             # Both posts are in the same transaction context
-            posts = await self.post_repo.find_many_by()
+            posts = await self.post_repo.get()
             assert len(posts) >= 2
 
     # Example 4: Error handling and rollback
