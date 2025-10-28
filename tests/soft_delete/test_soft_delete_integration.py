@@ -91,8 +91,8 @@ async def setup_soft_delete_with_timestamps_table(test_db_pool):
 def product_repo_with_soft_delete():
     """Repository with soft delete enabled"""
     return Repository(
-        entity_class=Product,
-        search_class=ProductSearch,
+        entity_schema_class=Product,
+        entity_domain_class=Product,
         update_class=ProductUpdate,
         table_name="products",
         config=RepositoryConfig(features=[SoftDeleteFeature()]),
@@ -103,8 +103,8 @@ def product_repo_with_soft_delete():
 def product_repo_with_all_features():
     """Repository with both timestamps and soft delete"""
     return Repository(
-        entity_class=Product,
-        search_class=ProductSearch,
+        entity_schema_class=Product,
+        entity_domain_class=Product,
         update_class=ProductUpdate,
         table_name="products",
         config=RepositoryConfig(features=[TimestampFeature(), SoftDeleteFeature()]),
@@ -354,8 +354,9 @@ class TestSoftDeleteIntegration:
             await product_repo_with_soft_delete.delete(created2.id)
 
             # Search for electronics - should only find active ones
-            search = ProductSearch(category="Electronics")
-            results = await product_repo_with_soft_delete.find_many_by(search)
+            results = await product_repo_with_soft_delete.where(
+                "category", "Electronics"
+            ).get()
 
             assert len(results) == 1
             assert results[0].name == "Active Product"

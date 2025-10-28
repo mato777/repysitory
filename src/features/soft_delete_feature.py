@@ -47,29 +47,13 @@ class SoftDeleteFeature(RepositoryFeature):
 
     def augment_entity_class(self, entity_class: type[BaseModel]) -> type[BaseModel]:
         """Add the deleted_at field to the entity class"""
-        # Get the original model fields
-        original_fields = entity_class.model_fields
+        # Check if deleted_at field already exists
+        if "deleted_at" in entity_class.model_fields:
+            return entity_class
 
-        # Add a soft delete field
-        soft_delete_field = {
-            "deleted_at": (datetime | None, None),
-        }
-
-        # Combine original fields with soft delete field
-        all_fields = {**original_fields, **soft_delete_field}
-
-        # Create field definitions for create_model
-        field_definitions = {}
-        for name, field_info in all_fields.items():
-            if hasattr(field_info, "annotation") and hasattr(field_info, "default"):
-                field_definitions[name] = (field_info.annotation, field_info.default)
-            else:
-                # For soft delete field, use the tuple directly
-                field_definitions[name] = field_info
-
-        # Create a new model class
+        # Create a new model class with just the soft delete field
         return create_model(
             f"{entity_class.__name__}WithSoftDelete",
             __base__=entity_class,
-            **field_definitions,
+            deleted_at=(datetime | None, None),
         )

@@ -51,8 +51,8 @@ async def timestamped_repo(test_db_pool):
     from src.repository import RepositoryConfig
 
     return Repository(
-        entity_class=TPost,
-        search_class=TPostSearch,
+        entity_schema_class=TPost,
+        entity_domain_class=TPost,
         update_class=TPostUpdate,
         table_name="timestamped_posts",
         config=RepositoryConfig(timestamps=True),
@@ -62,7 +62,7 @@ async def timestamped_repo(test_db_pool):
 @pytest.mark.asyncio
 @transactional("test_db")
 async def test_update_many_sets_new_updated_at_for_all_rows(
-    timestamped_repo: Repository[TPost, TPostSearch, TPostUpdate],
+    timestamped_repo: Repository[TPost, TPost, TPostUpdate],
 ):
     # Arrange
     posts = [

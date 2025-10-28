@@ -50,9 +50,14 @@ class UserUpdate(BaseModel):
     # Note: password_hash requires special method - not via general update!
 
 
-class UserRepository(Repository[User, UserSearch, UserUpdate]):
+class UserRepository(Repository[User, User, UserUpdate]):
     def __init__(self):
-        super().__init__(User, UserSearch, UserUpdate, "users")
+        super().__init__(
+            entity_schema_class=User,
+            entity_domain_class=User,
+            update_class=UserUpdate,
+            table_name="users",
+        )
 
     # Custom business logic methods
     @transactional("default")
@@ -98,9 +103,14 @@ class ProductUpdate(BaseModel):
     # Note: internal_cost and supplier_id require special admin methods
 
 
-class ProductRepository(Repository[Product, ProductSearch, ProductUpdate]):
+class ProductRepository(Repository[Product, Product, ProductUpdate]):
     def __init__(self):
-        super().__init__(Product, ProductSearch, ProductUpdate, "products")
+        super().__init__(
+            entity_schema_class=Product,
+            entity_domain_class=Product,
+            update_class=ProductUpdate,
+            table_name="products",
+        )
 
     @transactional("default")
     async def find_by_category(self, category_id: UUID):

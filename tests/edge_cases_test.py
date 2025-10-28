@@ -3,7 +3,7 @@ from uuid import uuid4
 import pytest
 
 from src.db_context import transactional
-from tests.post_entities import Post, PostSearch, PostSort, PostUpdate
+from tests.post_entities import Post, PostUpdate
 from tests.post_repository import PostRepository
 
 
@@ -64,10 +64,10 @@ class TestEdgeCasesAndValidation:
         post = Post(id=uuid4(), title="Test", content="Test content")
         await post_repo.create(post)
 
-        # Search with empty criteria
-        search = PostSearch()  # All fields are None
-        result = await post_repo.find_one_by(search)
-        assert result is None
+        # Getting all posts - no filter applied
+        # This test doesn't make sense without find_one_by, so let's test that get() returns results
+        all_posts = await post_repo.get()
+        assert len(all_posts) == 1  # We created one post
 
     @pytest.mark.asyncio
     @transactional("test_db")
@@ -79,9 +79,8 @@ class TestEdgeCasesAndValidation:
         ]
         await post_repo.create_many(posts)
 
-        # Sort with empty criteria
-        sort = PostSort()  # All fields are None
-        result = await post_repo.find_many_post_by(sort=sort)
+        # Get posts without sorting (default order)
+        result = await post_repo.get()
         assert len(result) == 2
         # Order should be insertion order since no sorting applied
 
@@ -127,7 +126,7 @@ class TestEdgeCasesAndValidation:
         assert deleted_count == 50
 
         # Verify remaining count
-        remaining_posts = await post_repo.find_many_post_by()
+        remaining_posts = await post_repo.get()
         assert len(remaining_posts) == 50
 
     @pytest.mark.asyncio
@@ -145,9 +144,8 @@ class TestEdgeCasesAndValidation:
         assert found_post is not None
         assert found_post.id == post_id
 
-        # Search by UUID
-        search = PostSearch(id=post_id)
-        found_by_search = await post_repo.find_one_by(search)
+        # Search by UUID using fluent interface
+        found_by_search = await post_repo.where("id", str(post_id)).first()
         assert found_by_search is not None
         assert found_by_search.id == post_id
 

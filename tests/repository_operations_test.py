@@ -3,9 +3,8 @@ from uuid import uuid4
 import pytest
 
 from src.db_context import DatabaseManager, transactional
-from src.entities import SortOrder
 from src.repository import Repository
-from tests.post_entities import Post, PostSearch, PostSort, PostUpdate
+from tests.post_entities import Post, PostUpdate
 from tests.post_repository import PostRepository
 
 
@@ -57,10 +56,10 @@ class TestPostRepositoryOperations:
         from src.repository import RepositoryConfig
 
         repo = Repository(
-            Post,
-            PostSearch,
-            PostUpdate,
-            "posts",
+            entity_schema_class=Post,
+            entity_domain_class=Post,
+            update_class=PostUpdate,
+            table_name="posts",
             config=RepositoryConfig(db_schema="app"),
         )
 
@@ -114,8 +113,7 @@ class TestPostRepositoryOperations:
         await post_repo.create_many(sample_posts)
 
         # Search by title
-        search = PostSearch(title="First Post")
-        found_post = await post_repo.find_one_by(search)
+        found_post = await post_repo.where("title", "First Post").first()
 
         assert found_post is not None
         assert found_post.title == "First Post"
@@ -128,8 +126,11 @@ class TestPostRepositoryOperations:
         await post_repo.create_many(sample_posts)
 
         # Search by title and content
-        search = PostSearch(title="First Post", content="This is the first post")
-        found_post = await post_repo.find_one_by(search)
+        found_post = (
+            await post_repo.where("title", "First Post")
+            .where("content", "This is the first post")
+            .first()
+        )
 
         assert found_post is not None
         assert found_post.title == "First Post"
@@ -141,13 +142,11 @@ class TestPostRepositoryOperations:
         await post_repo.create_many(sample_posts)
 
         # Find all posts (no search criteria)
-        all_posts = await post_repo.find_many_post_by()
+        all_posts = await post_repo.get()
         assert len(all_posts) == len(sample_posts)
 
-        # Search posts containing "Post" in title (should match all)
-        # Note: This is exact match, not partial
-        search = PostSearch()  # Empty search should return all
-        found_posts = await post_repo.find_many_post_by(search)
+        # Find all posts explicitly
+        found_posts = await post_repo.get()
         assert len(found_posts) == len(sample_posts)
 
     @pytest.mark.asyncio
@@ -157,8 +156,7 @@ class TestPostRepositoryOperations:
         await post_repo.create_many(sample_posts)
 
         # Sort by title ascending
-        sort = PostSort(title=SortOrder.ASC)
-        posts = await post_repo.find_many_post_by(sort=sort)
+        posts = await post_repo.order_by_asc("title").get()
 
         titles = [post.title for post in posts]
         assert titles == sorted(titles)  # Should be alphabetically sorted
@@ -171,8 +169,7 @@ class TestPostRepositoryOperations:
         await post_repo.create_many(sample_posts)
 
         # Sort by title descending
-        sort = PostSort(title=SortOrder.DESC)
-        posts = await post_repo.find_many_post_by(sort=sort)
+        posts = await post_repo.order_by_desc("title").get()
 
         titles = [post.title for post in posts]
         assert titles == sorted(titles, reverse=True)
@@ -191,8 +188,9 @@ class TestPostRepositoryOperations:
         await post_repo.create_many(posts)
 
         # Sort by title ASC, then content ASC
-        sort = PostSort(title=SortOrder.ASC, content=SortOrder.ASC)
-        sorted_posts = await post_repo.find_many_post_by(sort=sort)
+        sorted_posts = (
+            await post_repo.order_by_asc("title").order_by_asc("content").get()
+        )
 
         # Different Title should come first, then Same Title posts sorted by content
         assert sorted_posts[0].title == "Different Title"
@@ -213,9 +211,11 @@ class TestPostRepositoryOperations:
         await post_repo.create_many(posts)
 
         # Search for posts with shared content, sorted by title
-        search = PostSearch(content="shared content")
-        sort = PostSort(title=SortOrder.ASC)
-        found_posts = await post_repo.find_many_post_by(search=search, sort=sort)
+        found_posts = (
+            await post_repo.where("content", "shared content")
+            .order_by_asc("title")
+            .get()
+        )
 
         assert len(found_posts) == 2
         assert found_posts[0].title == "Test A"
@@ -280,7 +280,7 @@ class TestPostRepositoryOperations:
             assert found_post is None
 
         # Verify remaining posts still exist
-        remaining_posts = await post_repo.find_many_post_by()
+        remaining_posts = await post_repo.get()
         assert len(remaining_posts) == 2
 
     @pytest.mark.asyncio
@@ -334,11 +334,11 @@ class TestPostRepositoryOperations:
             await post_repo.create(posts[0])
             await post_repo.create(posts[1])
             # Both should be visible within the transaction
-            found_posts = await post_repo.find_many_post_by()
+            found_posts = await post_repo.get()
             assert len(found_posts) == 2
 
         # Both should still exist after transaction commits
-        found_posts = await post_repo.find_many_post_by()
+        found_posts = await post_repo.get()
         assert len(found_posts) == 2
 
     @pytest.mark.asyncio
@@ -351,8 +351,7 @@ class TestPostRepositoryOperations:
         await post_repo.create(post)
 
         # Search for a post that doesn't exist
-        search = PostSearch(title="Non-existent Post")
-        found_post = await post_repo.find_one_by(search)
+        found_post = await post_repo.where("title", "Non-existent Post").first()
 
         # Should return None when no matching record is found
         assert found_post is None

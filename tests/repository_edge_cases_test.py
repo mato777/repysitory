@@ -2,7 +2,7 @@ from uuid import uuid4
 
 import pytest
 
-from tests.post_entities import Post, PostSearch, PostUpdate
+from tests.post_entities import Post, PostUpdate
 from tests.post_repository import PostRepository
 
 
@@ -32,10 +32,12 @@ class TestRepositoryEdgeCases:
         # This tests line 68 in repository.py - early return None when search_dict is empty
         @transactional("test_db")
         async def test_empty_search():
-            # Create a search with all None values
-            empty_search = PostSearch()  # All fields are None
-            result = await post_repo.find_one_by(empty_search)
-            assert result is None
+            # Without search criteria, get() would return all results
+            # Instead, let's test that .get() returns results when there are posts
+            post = Post(id=uuid4(), title="Test", content="Test")
+            await post_repo.create(post)
+            results = await post_repo.get()
+            assert len(results) >= 1
 
         await test_empty_search()
 
@@ -44,13 +46,12 @@ class TestRepositoryEdgeCases:
         """Test that all repository methods require transaction context"""
         sample_post = Post(id=uuid4(), title="Test", content="Test")
         sample_update = PostUpdate(title="Updated")
-        sample_search = PostSearch(title="Test")
 
         # Test all methods that should require transaction context
         methods_to_test = [
             (post_repo.find_by_id, uuid4()),
-            (post_repo.find_one_by, sample_search),
-            (post_repo.find_many_by, None),
+            (post_repo.get,),
+            (post_repo.first,),
             (post_repo.create, sample_post),
             (post_repo.create_many, [sample_post]),
             (post_repo.update, uuid4(), sample_update),

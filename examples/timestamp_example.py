@@ -80,7 +80,6 @@ async def demonstrate_timestamp_functionality():
 
         post_repo = Repository(
             entity_class=BlogPost,
-            search_class=BlogPostSearch,
             update_class=BlogPostUpdate,
             table_name="blog_posts",
             config=RepositoryConfig(timestamps=True),  # Enable automatic timestamps
@@ -168,7 +167,6 @@ async def demonstrate_timestamp_functionality():
         # Create a repository without timestamps
         _no_timestamp_repo = Repository(
             entity_class=BlogPost,
-            search_class=BlogPostSearch,
             update_class=BlogPostUpdate,
             table_name="blog_posts",
             config=RepositoryConfig(timestamps=False),  # Disable timestamps

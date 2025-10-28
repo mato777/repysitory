@@ -6,14 +6,16 @@ from uuid import UUID
 from pydantic import BaseModel, Field, model_validator
 
 from src.database_operations import DatabaseOperations
+from src.db_context import DatabaseManager
 from src.entity_mapper import EntityMapper
 from src.features.base_feature import RepositoryFeature
 from src.features.timestamp_feature import TimestampFeature
 from src.query_builder import QueryBuilder
-from src.search_condition_builder import SearchConditionBuilder
 
-T = TypeVar("T", bound=BaseModel)  # Entity type
-S = TypeVar("S", bound=BaseModel)  # Search model type
+T_schema = TypeVar(
+    "T_schema", bound=BaseModel
+)  # Database schema entity (includes timestamps, etc.)
+T_domain = TypeVar("T_domain", bound=BaseModel)  # Domain/business entity
 U = TypeVar("U", bound=BaseModel)  # Update model type
 
 
@@ -41,19 +43,49 @@ class RepositoryConfig(BaseModel):
         return self
 
 
-class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
-    """Repository class using composition and inheritance"""
+class Repository[T_schema: BaseModel, T_domain: BaseModel, U: BaseModel]:
+    """Repository class using composition and inheritance.
+
+    Supports separation between storage entities (T_schema) and domain entities (T_domain).
+
+    For backward compatibility where schema == domain, use: Repository[T, T, U]
+
+    Type Parameters:
+        T_schema: Database schema entity (includes timestamps, DB fields)
+        T_domain: Domain/business entity (what users work with)
+        U: Update model type
+    """
 
     def __init__(
         self,
-        entity_class: type[T],
-        search_class: type[S],
-        update_class: type[U],
-        table_name: str,
+        entity_schema_class: type[T_schema],
+        entity_domain_class: type[T_domain] | None = None,
+        update_class: type[U] | None = None,
+        table_name: str | None = None,
         config: RepositoryConfig | None = None,
+        # Backward compatibility: if entity_class is provided, use it as both schema and domain
+        entity_class: type[Any] | None = None,
+        update_class_old: type[U] | None = None,
     ):
-        self.entity_class = entity_class
-        self.search_class = search_class
+        # Backward compatibility: handle old signature
+        if entity_class is not None:
+            entity_schema_class = entity_class
+            entity_domain_class = entity_class
+            update_class = update_class_old
+
+        if entity_schema_class is None:
+            raise ValueError("entity_schema_class is required")
+        if table_name is None:
+            raise ValueError("table_name is required")
+        if update_class is None:
+            raise ValueError("update_class is required")
+
+        # If domain class not provided, use schema as domain (backward compatibility)
+        if entity_domain_class is None:
+            entity_domain_class = entity_schema_class  # type: ignore[assignment]
+
+        self.entity_schema_class = entity_schema_class
+        self.entity_domain_class = entity_domain_class
         self.update_class = update_class
         self.table_name = table_name
         self.config = config or RepositoryConfig()
@@ -68,17 +100,36 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         self._include_trashed: bool = False
         self._only_trashed: bool = False
 
-        # Apply features to augment entity class
-        self._entity_class_with_features = entity_class
+        # Apply features to augment entity schema class (for DB operations)
+        self._entity_schema_class_with_features = entity_schema_class
         for feature in self.config.features:
-            self._entity_class_with_features = feature.augment_entity_class(
-                self._entity_class_with_features
+            self._entity_schema_class_with_features = feature.augment_entity_class(
+                self._entity_schema_class_with_features
             )
 
         # Composition: Inject dependencies
         self.db_ops = DatabaseOperations()
-        self.entity_mapper = EntityMapper(self._entity_class_with_features)
-        self.search_builder = SearchConditionBuilder()
+        self.entity_mapper = EntityMapper(self._entity_schema_class_with_features)
+
+    def to_domain_entity(self, schema_entity: T_schema) -> T_domain:
+        """Convert schema entity to domain entity.
+
+        Override this method in subclasses to customize mapping from storage to domain.
+        By default, attempts to create a domain entity from the schema entity's dict.
+
+        Args:
+            schema_entity: The database schema entity
+
+        Returns:
+            The domain/business entity
+        """
+        # Default implementation: try to create domain entity from schema data
+        if self.entity_schema_class == self.entity_domain_class:
+            return schema_entity  # type: ignore[return-value]
+
+        # If they differ, try to construct domain entity from schema entity's data
+        schema_dict = schema_entity.model_dump()
+        return self.entity_domain_class(**schema_dict)  # type: ignore[return-value]
 
     def _get_or_create_query_builder(self) -> QueryBuilder:
         """Get an existing query builder or create a new one"""
@@ -88,11 +139,11 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
 
     def _clone_with_query_builder(
         self, query_builder: QueryBuilder
-    ) -> "Repository[T, S, U]":
+    ) -> "Repository[T_schema, T_domain, U]":
         """Create a new repository instance with the given query builder"""
         new_repo = Repository(
-            self.entity_class,
-            self.search_class,
+            self.entity_schema_class,
+            self.entity_domain_class,
             self.update_class,
             self.table_name,
             self.config,
@@ -130,13 +181,13 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         return data
 
     # Fluent query methods that return a new repository instance
-    def select(self, *fields: str) -> "Repository[T, S, U]":
+    def select(self, *fields: str) -> "Repository[T_schema, T_domain, U]":
         """Set the SELECT fields. Accepts one or more field strings; defaults to * when none is provided."""
         current_builder = self._get_or_create_query_builder()
         new_builder = current_builder.select(*fields)
         return self._clone_with_query_builder(new_builder)
 
-    def where(self, field: str, *args: Any) -> "Repository[T, S, U]":
+    def where(self, field: str, *args: Any) -> "Repository[T_schema, T_domain, U]":
         """Add a WHERE condition.
 
         Supports both: where(field, value) and where (field, operator, value)
@@ -145,7 +196,7 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         new_builder = current_builder.where(field, *args)
         return self._clone_with_query_builder(new_builder)
 
-    def or_where(self, field: str, *args: Any) -> "Repository[T, S, U]":
+    def or_where(self, field: str, *args: Any) -> "Repository[T_schema, T_domain, U]":
         """Add an OR WHERE condition.
 
         Supports both: or_where(field, value) and or_where(field, operator, value)
@@ -154,74 +205,78 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         new_builder = current_builder.or_where(field, *args)
         return self._clone_with_query_builder(new_builder)
 
-    def where_in(self, field: str, values: list) -> "Repository[T, S, U]":
+    def where_in(self, field: str, values: list) -> "Repository[T_schema, T_domain, U]":
         """Add a WHERE IN condition"""
         current_builder = self._get_or_create_query_builder()
         new_builder = current_builder.where_in(field, values)
         return self._clone_with_query_builder(new_builder)
 
-    def where_not_in(self, field: str, values: list) -> "Repository[T, S, U]":
+    def where_not_in(
+        self, field: str, values: list
+    ) -> "Repository[T_schema, T_domain, U]":
         """Add a WHERE NOT IN condition"""
         current_builder = self._get_or_create_query_builder()
         new_builder = current_builder.where_not_in(field, values)
         return self._clone_with_query_builder(new_builder)
 
-    def order_by(self, field: str) -> "Repository[T, S, U]":
+    def order_by(self, field: str) -> "Repository[T_schema, T_domain, U]":
         """Add ORDER BY ascending for a field (default)."""
         current_builder = self._get_or_create_query_builder()
         new_builder = current_builder.order_by(field)
         return self._clone_with_query_builder(new_builder)
 
-    def order_by_asc(self, field: str) -> "Repository[T, S, U]":
+    def order_by_asc(self, field: str) -> "Repository[T_schema, T_domain, U]":
         """Add ORDER BY ... ASC for a field. Can be chained for multiple fields."""
         current_builder = self._get_or_create_query_builder()
         new_builder = current_builder.order_by_asc(field)
         return self._clone_with_query_builder(new_builder)
 
-    def order_by_desc(self, field: str) -> "Repository[T, S, U]":
+    def order_by_desc(self, field: str) -> "Repository[T_schema, T_domain, U]":
         """Add ORDER BY ... DESC for a field. Can be chained for multiple fields."""
         current_builder = self._get_or_create_query_builder()
         new_builder = current_builder.order_by_desc(field)
         return self._clone_with_query_builder(new_builder)
 
-    def group_by(self, *fields: str) -> "Repository[T, S, U]":
+    def group_by(self, *fields: str) -> "Repository[T_schema, T_domain, U]":
         """Add GROUP BY fields."""
         current_builder = self._get_or_create_query_builder()
         new_builder = current_builder.group_by(*fields)
         return self._clone_with_query_builder(new_builder)
 
-    def having(self, field: str, *args: Any) -> "Repository[T, S, U]":
+    def having(self, field: str, *args: Any) -> "Repository[T_schema, T_domain, U]":
         """Add a HAVING condition. Supports (field, value) or (field, operator, value)."""
         current_builder = self._get_or_create_query_builder()
         new_builder = current_builder.having(field, *args)
         return self._clone_with_query_builder(new_builder)
 
-    def limit(self, count: int) -> "Repository[T, S, U]":
+    def limit(self, count: int) -> "Repository[T_schema, T_domain, U]":
         """Set the LIMIT clause"""
         current_builder = self._get_or_create_query_builder()
         new_builder = current_builder.limit(count)
         return self._clone_with_query_builder(new_builder)
 
-    def offset(self, count: int) -> "Repository[T, S, U]":
+    def offset(self, count: int) -> "Repository[T_schema, T_domain, U]":
         """Set the OFFSET clause"""
         current_builder = self._get_or_create_query_builder()
         new_builder = current_builder.offset(count)
         return self._clone_with_query_builder(new_builder)
 
-    def paginate(self, page: int, per_page: int = 10) -> "Repository[T, S, U]":
+    def paginate(
+        self, page: int, per_page: int = 10
+    ) -> "Repository[T_schema, T_domain, U]":
         """Set pagination parameters"""
         current_builder = self._get_or_create_query_builder()
         new_builder = current_builder.paginate(page, per_page)
         return self._clone_with_query_builder(new_builder)
 
-    def with_trashed(self) -> "Repository[T, S, U]":
+    def with_trashed(self) -> "Repository[T_schema, T_domain, U]":
         """Include soft-deleted records in query results (only if soft delete is enabled)"""
         new_repo = self._clone_with_query_builder(self._get_or_create_query_builder())
         new_repo._include_trashed = True
         new_repo._only_trashed = False
         return new_repo
 
-    def only_trashed(self) -> "Repository[T, S, U]":
+    def only_trashed(self) -> "Repository[T_schema, T_domain, U]":
         """Only return soft-deleted records (only if soft delete is enabled)"""
         new_repo = self._clone_with_query_builder(self._get_or_create_query_builder())
         new_repo._include_trashed = False
@@ -229,8 +284,8 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         return new_repo
 
     # Execution methods for fluent queries
-    async def get(self) -> list[T]:
-        """Execute the query and return all matching entities"""
+    async def get(self) -> list[T_domain]:
+        """Execute the query and return all matching entities as domain entities"""
         if self._query_builder is None:
             self._query_builder = QueryBuilder(self._qualified_table_name)
 
@@ -251,10 +306,14 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         if self._query_builder.select_fields.strip() != "*":
             return [dict(row) for row in rows]  # type: ignore[return-value]
 
-        return self.entity_mapper.map_rows_to_entities(rows)  # type: ignore[return-value]
+        schema_entities = self.entity_mapper.map_rows_to_entities(rows)
+        return [
+            self.to_domain_entity(schema_entity)  # type: ignore[arg-type]
+            for schema_entity in schema_entities
+        ]
 
-    async def first(self) -> T | None:
-        """Execute the query and return the first matching entity"""
+    async def first(self) -> T_domain | None:
+        """Execute the query and return the first matching domain entity"""
         current_builder = self._get_or_create_query_builder()
 
         # Apply soft delete filters if enabled
@@ -271,7 +330,8 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         query, params = limited_builder.build()
         row = await self.db_ops.fetch_one(query, params)
         if row:
-            return self.entity_mapper.map_row_to_entity(row)  # type: ignore[return-value]
+            schema_entity = self.entity_mapper.map_row_to_entity(row)
+            return self.to_domain_entity(schema_entity)  # type: ignore[return-value, arg-type]
         return None
 
     async def count(self) -> int:
@@ -308,48 +368,28 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         current_builder = self._get_or_create_query_builder()
         return current_builder.build()
 
+    @staticmethod
+    def get_query_tracker():
+        """Get the current query tracker if query tracking is enabled.
+
+        Returns:
+            QueryTracker | None: The current query tracker or None if not tracking
+
+        Example:
+            async with DatabaseManager.track_queries():
+                user = await user_repo.find_by_id(user_id)
+                tracker = Repository.get_query_tracker()
+                queries = tracker.get_queries() if tracker else []
+        """
+        return DatabaseManager.get_query_tracker()
+
     # CRUD operations - refactored to use fluent interface where possible
-    async def find_by_id(self, entity_id: UUID) -> T | None:
+    async def find_by_id(self, entity_id: UUID) -> T_domain | None:
         """Find entity by ID using fluent interface"""
         return await self.where("id", str(entity_id)).first()
 
-    async def find_one_by(self, search: S) -> T | None:
-        """Find one entity by search criteria using a fluent interface"""
-        # Use exclude_unset to include explicit None values in search
-        search_dict = search.model_dump(exclude_unset=True)
-        if not search_dict:
-            return None
-
-        # Build query using fluent interface
-        query_repo = self
-        for field, value in search_dict.items():
-            query_repo = query_repo.where(field, value)
-
-        return await query_repo.first()
-
-    async def find_many_by(
-        self, search: S | None = None, sort: BaseModel | None = None
-    ) -> list[T]:
-        """Find many entities by search criteria using a fluent interface"""
-        query_repo = self
-
-        if search:
-            # Use exclude_unset to include explicit None values in search
-            search_dict = search.model_dump(exclude_unset=True)
-            for field, value in search_dict.items():
-                query_repo = query_repo.where(field, value)
-
-        # Apply ORDER BY if a sort is provided (ASC by default, DESC via order_by_desc)
-        query_repo = self._clone_with_query_builder(
-            self.search_builder.apply_sort(
-                query_repo._get_or_create_query_builder(), sort
-            )
-        )
-
-        return await query_repo.get()
-
-    async def create(self, entity: T) -> T:
-        """Create a new entity"""
+    async def create(self, entity: T_domain) -> T_domain:
+        """Create a new domain entity"""
         fields = entity.model_dump()
         fields = self._apply_feature_hooks(fields, is_create=True)
 
@@ -362,10 +402,11 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
             values,
         )
 
-        # Return entity with features applied
-        return self._entity_class_with_features(**fields)  # type: ignore[return-value]
+        # Create schema entity with features applied, then convert to domain
+        schema_entity = self._entity_schema_class_with_features(**fields)
+        return self.to_domain_entity(schema_entity)  # type: ignore[arg-type]
 
-    async def create_many(self, entities: list[T]) -> list[T]:
+    async def create_many(self, entities: list[T_domain]) -> list[T_domain]:
         """Create multiple entities"""
         if not entities:
             return []
@@ -400,16 +441,17 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
             all_values,
         )
 
-        # Return entities with features applied
+        # Return domain entities with features applied
         result_entities = []
         for entity in entities:
             entity_fields = entity.model_dump()
             entity_fields = self._apply_feature_hooks(entity_fields, is_create=True)
-            result_entities.append(self._entity_class_with_features(**entity_fields))
+            schema_entity = self._entity_schema_class_with_features(**entity_fields)
+            result_entities.append(self.to_domain_entity(schema_entity))  # type: ignore[arg-type]
 
         return result_entities
 
-    async def update(self, entity_id: UUID, update_data: U) -> T | None:
+    async def update(self, entity_id: UUID, update_data: U) -> T_domain | None:
         """Update entity and return the updated version using fluent interface"""
         # Use exclude_unset to only include fields that were explicitly set.
         # This allows None values (for restoration) while excluding unset fields
@@ -433,7 +475,9 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         # Use fluent interface to fetch an updated entity
         return await self.find_by_id(entity_id)
 
-    async def update_many_by_ids(self, ids: list[UUID], update_data: U) -> list[T]:
+    async def update_many_by_ids(
+        self, ids: list[UUID], update_data: U
+    ) -> list[T_domain]:
         """Update multiple entities by their IDs with the same changes and return the updated entities."""
         if not ids:
             return []
@@ -465,7 +509,11 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         params = list(update_dict.values()) + str_ids
 
         rows = await self.db_ops.fetch_all(sql, params)
-        return self.entity_mapper.map_rows_to_entities(rows)  # type: ignore[return-value]
+        schema_entities = self.entity_mapper.map_rows_to_entities(rows)
+        return [
+            self.to_domain_entity(schema_entity)  # type: ignore[arg-type]
+            for schema_entity in schema_entities
+        ]
 
     async def delete(self, entity_id: UUID | None = None) -> bool | int:
         """
@@ -558,7 +606,7 @@ class Repository[T: BaseModel, S: BaseModel, U: BaseModel]:
         )
         return result != "DELETE 0"
 
-    async def restore(self, entity_id: UUID) -> T | None:
+    async def restore(self, entity_id: UUID) -> T_domain | None:
         """Restore a soft-deleted entity by setting deleted_at to None"""
         if not self._has_soft_delete_feature():
             # Can't restore if soft delete is not enabled

@@ -38,7 +38,6 @@ class ArticleUpdate(BaseModel):
 # Method 1: Using the backward-compatible timestamps flag
 article_repo_legacy = Repository(
     entity_class=Article,
-    search_class=ArticleSearch,
     update_class=ArticleUpdate,
     table_name="articles",
     config=RepositoryConfig(timestamps=True),  # Auto-creates TimestampFeature
@@ -47,7 +46,6 @@ article_repo_legacy = Repository(
 # Method 2: Using the explicit feature system (recommended)
 article_repo_modern = Repository(
     entity_class=Article,
-    search_class=ArticleSearch,
     update_class=ArticleUpdate,
     table_name="articles",
     config=RepositoryConfig(features=[TimestampFeature()]),
@@ -154,7 +152,6 @@ def get_current_user() -> str:
 
 product_repo = Repository(
     entity_class=Product,
-    search_class=ProductSearch,
     update_class=ProductUpdate,
     table_name="products",
     config=RepositoryConfig(
@@ -226,7 +223,6 @@ def validate_price(price: float) -> bool:
 
 validated_product_repo = Repository(
     entity_class=Product,
-    search_class=ProductSearch,
     update_class=ProductUpdate,
     table_name="products",
     config=RepositoryConfig(

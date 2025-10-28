@@ -67,8 +67,8 @@ class TestTimestampFunctionality:
         from src.repository import RepositoryConfig
 
         return Repository(
-            entity_class=TimestampedEntity,
-            search_class=TimestampedEntitySearch,
+            entity_schema_class=TimestampedEntity,
+            entity_domain_class=TimestampedEntity,
             update_class=TimestampedEntityUpdate,
             table_name="timestamped_entities",
             config=RepositoryConfig(timestamps=True),
@@ -80,8 +80,8 @@ class TestTimestampFunctionality:
         from src.repository import RepositoryConfig
 
         return Repository(
-            entity_class=NonTimestampedEntity,
-            search_class=NonTimestampedEntitySearch,
+            entity_schema_class=NonTimestampedEntity,
+            entity_domain_class=NonTimestampedEntity,
             update_class=NonTimestampedEntityUpdate,
             table_name="non_timestamped_entities",
             config=RepositoryConfig(timestamps=False),
@@ -221,24 +221,24 @@ class TestTimestampFunctionality:
         from src.repository import RepositoryConfig
 
         repo = Repository(
-            entity_class=TimestampedEntity,
-            search_class=TimestampedEntitySearch,
+            entity_schema_class=TimestampedEntity,
+            entity_domain_class=TimestampedEntity,
             update_class=TimestampedEntityUpdate,
             table_name="test_table",
             config=RepositoryConfig(timestamps=True),
         )
 
         assert repo.config.timestamps is True
-        assert repo.entity_class == TimestampedEntity
-        assert repo.search_class == TimestampedEntitySearch
+        assert repo.entity_schema_class == TimestampedEntity
+        assert repo.entity_domain_class == TimestampedEntity
         assert repo.update_class == TimestampedEntityUpdate
         assert repo.table_name == "test_table"
 
     def test_repository_constructor_without_timestamps(self):
         """Test Repository constructor without timestamps parameter"""
         repo = Repository(
-            entity_class=NonTimestampedEntity,
-            search_class=NonTimestampedEntitySearch,
+            entity_schema_class=NonTimestampedEntity,
+            entity_domain_class=NonTimestampedEntity,
             update_class=NonTimestampedEntityUpdate,
             table_name="test_table",
         )
@@ -250,8 +250,8 @@ class TestTimestampFunctionality:
         from src.repository import RepositoryConfig
 
         repo = Repository(
-            entity_class=NonTimestampedEntity,
-            search_class=NonTimestampedEntitySearch,
+            entity_schema_class=NonTimestampedEntity,
+            entity_domain_class=NonTimestampedEntity,
             update_class=NonTimestampedEntityUpdate,
             table_name="test_table",
             config=RepositoryConfig(timestamps=False),
@@ -269,8 +269,7 @@ class TestTimestampFunctionality:
         cloned_repo = timestamped_repo._clone_with_query_builder(query_builder)
 
         assert cloned_repo.config.timestamps is True
-        assert cloned_repo.entity_class == timestamped_repo.entity_class
-        assert cloned_repo.search_class == timestamped_repo.search_class
+        assert cloned_repo.entity_schema_class == timestamped_repo.entity_schema_class
         assert cloned_repo.update_class == timestamped_repo.update_class
         assert cloned_repo.table_name == timestamped_repo.table_name
         assert cloned_repo.config.db_schema == timestamped_repo.config.db_schema

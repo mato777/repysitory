@@ -63,8 +63,8 @@ class TestTimestampIntegration:
         from src.repository import RepositoryConfig
 
         return Repository(
-            entity_class=TimestampedPost,
-            search_class=TimestampedPostSearch,
+            entity_schema_class=TimestampedPost,
+            entity_domain_class=TimestampedPost,
             update_class=TimestampedPostUpdate,
             table_name="timestamped_posts",
             config=RepositoryConfig(timestamps=True),
@@ -87,8 +87,8 @@ class TestTimestampIntegration:
         from src.repository import RepositoryConfig
 
         return Repository(
-            entity_class=TimestampedPost,
-            search_class=TimestampedPostSearch,
+            entity_schema_class=TimestampedPost,
+            entity_domain_class=TimestampedPost,
             update_class=TimestampedPostUpdate,
             table_name="non_timestamped_posts",
             config=RepositoryConfig(timestamps=False),
@@ -223,9 +223,8 @@ class TestTimestampIntegration:
         ]
         await timestamped_post_repo.create_many(posts)
 
-        # Search for posts
-        search_criteria = TimestampedPostSearch(title="Search Post 1")
-        found_posts = await timestamped_post_repo.find_many_by(search_criteria)
+        # Search for posts using fluent interface
+        found_posts = await timestamped_post_repo.where("title", "Search Post 1").get()
 
         assert len(found_posts) == 1
         found_post = found_posts[0]
@@ -275,14 +274,16 @@ class TestTimestampIntegration:
         )
         created_post = await timestamped_post_repo.create(post)
 
-        # Search by created_at
-        search_by_created = TimestampedPostSearch(created_at=created_post.created_at)
-        found_posts = await timestamped_post_repo.find_many_by(search_by_created)
+        # Search by created_at using fluent interface
+        found_posts = await timestamped_post_repo.where(
+            "created_at", created_post.created_at
+        ).get()
         assert len(found_posts) == 1
         assert found_posts[0].id == created_post.id
 
-        # Search by updated_at
-        search_by_updated = TimestampedPostSearch(updated_at=created_post.updated_at)
-        found_posts = await timestamped_post_repo.find_many_by(search_by_updated)
+        # Search by updated_at using fluent interface
+        found_posts = await timestamped_post_repo.where(
+            "updated_at", created_post.updated_at
+        ).get()
         assert len(found_posts) == 1
         assert found_posts[0].id == created_post.id

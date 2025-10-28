@@ -1,32 +1,26 @@
-from src.entities import SortOrder
 from src.repository import Repository
-from tests.post_entities import Post, PostSearch, PostSort, PostUpdate
+from tests.post_entities import Post, PostUpdate
 
 
-class PostRepository(Repository[Post, PostSearch, PostUpdate]):
+class PostRepository(Repository[Post, Post, PostUpdate]):
     def __init__(self):
-        super().__init__(Post, PostSearch, PostUpdate, "posts")
-
-    # Override to add proper PostSort typing
-    async def find_many_post_by(
-        self, search: PostSearch | None = None, sort: PostSort | None = None
-    ) -> list[Post]:
-        return await super().find_many_by(search, sort)
+        super().__init__(
+            entity_schema_class=Post,
+            entity_domain_class=Post,
+            update_class=PostUpdate,
+            table_name="posts",
+        )
 
     # Custom finders for testing
     async def find_by_title(self, title: str) -> Post | None:
-        search = PostSearch(title=title)
-        return await self.find_one_by(search)
+        return await self.where("title", title).first()
 
     async def find_by_content_containing(self, content_part: str) -> list[Post]:
-        search = PostSearch(content=content_part)
-        return await self.find_many_post_by(search)
+        return await self.where("content", "LIKE", f"%{content_part}%").get()
 
     # Convenience methods with sorting
     async def find_all_sorted_by_title(self) -> list[Post]:
-        sort = PostSort(title=SortOrder.ASC)
-        return await self.find_many_post_by(sort=sort)
+        return await self.order_by_asc("title").get()
 
     async def find_latest_posts(self) -> list[Post]:
-        sort = PostSort(id=SortOrder.DESC)
-        return await self.find_many_post_by(sort=sort)
+        return await self.order_by_desc("id").get()

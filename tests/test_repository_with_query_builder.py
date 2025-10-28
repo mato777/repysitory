@@ -13,9 +13,6 @@ from tests.post_entities import (
     Post as PostEntity,
 )
 from tests.post_entities import (
-    PostSearch as PostSearchArgs,
-)
-from tests.post_entities import (
     PostUpdate as PostUpdateArgs,
 )
 
@@ -26,7 +23,12 @@ class TestRepositoryWithQueryBuilder:
     @pytest.fixture
     def repository(self):
         """Create a test repository instance"""
-        return Repository(PostEntity, PostSearchArgs, PostUpdateArgs, "test_posts")
+        return Repository(
+            entity_schema_class=PostEntity,
+            entity_domain_class=PostEntity,
+            update_class=PostUpdateArgs,
+            table_name="test_posts",
+        )
 
     @pytest.fixture
     def sample_posts(self):

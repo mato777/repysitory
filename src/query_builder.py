@@ -4,7 +4,10 @@ The goal is to produce SQL queries without execution.
 """
 
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from src.entities import Field
 
 
 class QueryBuilder:
@@ -29,6 +32,18 @@ class QueryBuilder:
         self.select_alias_map: dict[str, str] = {}
         self.limit_count: int | None = None
         self.offset_count: int | None = None
+        # JOIN support
+        self.joins: list[str] = []
+        self.table_alias: str | None = None
+        self._modified_from_clause: str | None = None
+
+    @staticmethod
+    def _to_field_name(field: "str | Field") -> str:
+        """Convert a field (string or Field object) to its string representation"""
+        # Check if it's a Field object by checking for the _column_name attribute
+        if hasattr(field, "_column_name"):
+            return str(field._column_name)  # type: ignore[attr-defined]
+        return str(field)
 
     def _clone(self) -> "QueryBuilder":
         """Create a copy of the current QueryBuilder instance"""
@@ -44,29 +59,35 @@ class QueryBuilder:
         new_builder.select_alias_map = self.select_alias_map.copy()
         new_builder.limit_count = self.limit_count
         new_builder.offset_count = self.offset_count
+        new_builder.joins = self.joins.copy()
+        new_builder.table_alias = self.table_alias
+        new_builder._modified_from_clause = self._modified_from_clause
         return new_builder
 
     def _add_condition(
-        self, field: str, value: Any, operator: str, is_or: bool = False
+        self, field: "str | Field", value: Any, operator: str, is_or: bool = False
     ) -> "QueryBuilder":
         """Add a condition to either WHERE or OR WHERE clauses"""
         new_builder = self._clone()
 
+        # Convert field to string if it's a Field object
+        field_name = self._to_field_name(field)
+
         # Handle None values with IS NULL / IS NOT NULL
         if value is None:
             if operator == "=":
-                condition = f"{field} IS NULL"
+                condition = f"{field_name} IS NULL"
             elif operator in ("!=", "<>"):
-                condition = f"{field} IS NOT NULL"
+                condition = f"{field_name} IS NOT NULL"
             else:
                 # For other operators with None, treat as standard comparison
                 # This might not make logical sense but maintains backward compatibility
                 param_index = len(new_builder.params) + 1
-                condition = f"{field} {operator} ${param_index}"
+                condition = f"{field_name} {operator} ${param_index}"
                 new_builder.params.append(value)
         else:
             param_index = len(new_builder.params) + 1
-            condition = f"{field} {operator} ${param_index}"
+            condition = f"{field_name} {operator} ${param_index}"
             new_builder.params.append(value)
 
         if is_or:
@@ -78,13 +99,16 @@ class QueryBuilder:
 
     def _add_in_condition(
         self,
-        field: str,
+        field: "str | Field",
         values: Any | list[Any],
         is_not: bool = False,
         is_or: bool = False,
     ) -> "QueryBuilder":
         """Add IN or NOT IN conditions"""
         new_builder = self._clone()
+
+        # Convert field to string if it's a Field object
+        field_name = self._to_field_name(field)
 
         # Convert single value to list for consistent handling
         if not isinstance(values, list):
@@ -94,7 +118,7 @@ class QueryBuilder:
         start_index = len(new_builder.params) + 1
         placeholders = ", ".join([f"${i + start_index}" for i in range(len(values))])
         not_keyword = "NOT " if is_not else ""
-        condition = f"{field} {not_keyword}IN ({placeholders})"
+        condition = f"{field_name} {not_keyword}IN ({placeholders})"
 
         if is_or:
             new_builder.or_where_conditions.append(condition)
@@ -190,7 +214,7 @@ class QueryBuilder:
 
     def where(
         self,
-        field_or_function: str | Callable[["QueryBuilder"], "QueryBuilder"],
+        field_or_function: "str | Field | Callable[['QueryBuilder'], 'QueryBuilder']",
         *args: Any,
     ) -> "QueryBuilder":
         """Add a WHERE condition or grouped WHERE clause.
@@ -200,6 +224,8 @@ class QueryBuilder:
         - where(field, operator, value) -> explicit operator in the second place
 
         Grouped conditions via function remain supported: where(lambda qb: ...)
+
+        Field can be a string or a Field object from SchemaBase.
         """
         if callable(field_or_function):
             return self.where_group(field_or_function)
@@ -216,7 +242,7 @@ class QueryBuilder:
 
     def or_where(
         self,
-        field_or_function: str | Callable[["QueryBuilder"], "QueryBuilder"],
+        field_or_function: "str | Field | Callable[['QueryBuilder'], 'QueryBuilder']",
         *args: Any,
     ) -> "QueryBuilder":
         """Add an OR WHERE condition or grouped OR WHERE clause.
@@ -224,6 +250,8 @@ class QueryBuilder:
         Supports both of the following call styles:
         - or_where(field, value) -> operator defaults to '='
         - or_where(field, operator, value) -> explicit operator in the second place
+
+        Field can be a string or a Field object from SchemaBase.
         """
         if callable(field_or_function):
             return self.or_where_group(field_or_function)
@@ -287,20 +315,26 @@ class QueryBuilder:
             return self.or_where(field, operator, value)
         return self.or_where_multiple(conditions)
 
-    def where_in(self, field: str, values: Any | list[Any]) -> "QueryBuilder":
-        """Add a WHERE IN condition"""
+    def where_in(self, field: "str | Field", values: Any | list[Any]) -> "QueryBuilder":
+        """Add a WHERE IN condition. Field can be a string or a Field object."""
         return self._add_in_condition(field, values, is_not=False, is_or=False)
 
-    def where_not_in(self, field: str, values: Any | list[Any]) -> "QueryBuilder":
-        """Add a WHERE NOT IN condition"""
+    def where_not_in(
+        self, field: "str | Field", values: Any | list[Any]
+    ) -> "QueryBuilder":
+        """Add a WHERE NOT IN condition. Field can be a string or a Field object."""
         return self._add_in_condition(field, values, is_not=True, is_or=False)
 
-    def or_where_in(self, field: str, values: Any | list[Any]) -> "QueryBuilder":
-        """Add an OR WHERE IN condition"""
+    def or_where_in(
+        self, field: "str | Field", values: Any | list[Any]
+    ) -> "QueryBuilder":
+        """Add an OR WHERE IN condition. Field can be a string or a Field object."""
         return self._add_in_condition(field, values, is_not=False, is_or=True)
 
-    def or_where_not_in(self, field: str, values: Any | list[Any]) -> "QueryBuilder":
-        """Add an OR WHERE NOT IN condition"""
+    def or_where_not_in(
+        self, field: "str | Field", values: Any | list[Any]
+    ) -> "QueryBuilder":
+        """Add an OR WHERE NOT IN condition. Field can be a string or a Field object."""
         return self._add_in_condition(field, values, is_not=True, is_or=True)
 
     def _add_group_condition(
@@ -340,43 +374,49 @@ class QueryBuilder:
         """Add a grouped OR WHERE clause using a function"""
         return self._add_group_condition(group_function, is_or=True)
 
-    def order_by(self, field: str) -> "QueryBuilder":
-        """Add ORDER BY ascending for a field (default). Chain to add multiple fields."""
+    def order_by(self, field: "str | Field") -> "QueryBuilder":
+        """Add ORDER BY ascending for a field (default). Chain to add multiple fields. Field can be a string or a Field object."""
         new_builder = self._clone()
         new_builder.order_by_clause = ""
-        new_builder.order_by_parts.append(f"{field}")
+        field_name = self._to_field_name(field)
+        new_builder.order_by_parts.append(f"{field_name}")
         return new_builder
 
-    def order_by_asc(self, field: str) -> "QueryBuilder":
-        """Add an ORDER BY ... ASC on the given field. Can be chained to add multiple fields."""
+    def order_by_asc(self, field: "str | Field") -> "QueryBuilder":
+        """Add an ORDER BY ... ASC on the given field. Can be chained to add multiple fields. Field can be a string or a Field object."""
         new_builder = self._clone()
         new_builder.order_by_clause = ""
-        new_builder.order_by_parts.append(f"{field}")
+        field_name = self._to_field_name(field)
+        new_builder.order_by_parts.append(f"{field_name}")
         return new_builder
 
-    def order_by_desc(self, field: str) -> "QueryBuilder":
-        """Add an ORDER BY ... DESC on the given field. Can be chained to add multiple fields."""
+    def order_by_desc(self, field: "str | Field") -> "QueryBuilder":
+        """Add an ORDER BY ... DESC on the given field. Can be chained to add multiple fields. Field can be a string or a Field object."""
         new_builder = self._clone()
         new_builder.order_by_clause = ""
-        new_builder.order_by_parts.append(f"{field} DESC")
+        field_name = self._to_field_name(field)
+        new_builder.order_by_parts.append(f"{field_name} DESC")
         return new_builder
 
-    def group_by(self, *fields: str) -> "QueryBuilder":
-        """Add GROUP BY fields. Can be chained or passed multiple fields."""
+    def group_by(self, *fields: "str | Field") -> "QueryBuilder":
+        """Add GROUP BY fields. Can be chained or passed multiple fields. Field can be a string or a Field object."""
         if not fields:
             return self
         new_builder = self._clone()
         for field in fields:
             if field:
-                new_builder.group_by_parts.append(f"{field}")
+                field_name = self._to_field_name(field)
+                new_builder.group_by_parts.append(f"{field_name}")
         return new_builder
 
-    def having(self, field: str, *args: Any) -> "QueryBuilder":
+    def having(self, field: "str | Field", *args: Any) -> "QueryBuilder":
         """Add a HAVING condition.
 
         Supports both of the following call styles:
         - having(field, value) -> operator defaults to '='
         - having (field, operator, value) -> explicit operator in the second place
+
+        Field can be a string or a Field object.
         """
         new_builder = self._clone()
         if len(args) == 2:
@@ -388,8 +428,11 @@ class QueryBuilder:
                 "having() expects (field, value) or (field, operator, value)"
             )
 
+        # Convert field to string if it's a Field object
+        field_name = self._to_field_name(field)
+
         # Resolve aliases from the SELECT list, if any
-        resolved_field = new_builder.select_alias_map.get(field, field)
+        resolved_field = new_builder.select_alias_map.get(field_name, field_name)
         param_index = len(new_builder.params) + 1
         condition = f"{resolved_field} {operator} ${param_index}"
         new_builder.having_conditions.append(condition)

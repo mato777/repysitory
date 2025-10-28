@@ -40,9 +40,14 @@ class PostUpdate(BaseModel):
     content: str | None = None
 
 
-class PostRepository(Repository[Post, PostSearch, PostUpdate]):
+class PostRepository(Repository[Post, Post, PostUpdate]):
     def __init__(self):
-        super().__init__(Post, PostSearch, PostUpdate, "posts")
+        super().__init__(
+            entity_schema_class=Post,
+            entity_domain_class=Post,
+            update_class=PostUpdate,
+            table_name="posts",
+        )
 
 
 # Example 1: Automatic Rollback on Exception
