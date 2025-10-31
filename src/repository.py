@@ -1,15 +1,19 @@
 """Repository class"""
 
 from datetime import UTC, datetime
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
+from pydantic import Field as PydanticField
 
 from src.database_operations import DatabaseOperations
 from src.db_context import DatabaseManager
 from src.entity_mapper import EntityMapper
 from src.query_builder import QueryBuilder
+
+if TYPE_CHECKING:
+    from src.entities import Field
 
 T_schema = TypeVar(
     "T_schema", bound=BaseModel
@@ -23,7 +27,9 @@ class RepositoryConfig(BaseModel):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    db_schema: str | None = Field(default=None, description="Database schema name")
+    db_schema: str | None = PydanticField(
+        default=None, description="Database schema name"
+    )
 
 
 class Repository[T_schema: BaseModel, T_domain: BaseModel, U: BaseModel]:
@@ -160,8 +166,8 @@ class Repository[T_schema: BaseModel, T_domain: BaseModel, U: BaseModel]:
         return data
 
     # Fluent query methods that return a new repository instance
-    def select(self, *fields: str) -> "Repository[T_schema, T_domain, U]":
-        """Set the SELECT fields. Accepts one or more field strings; defaults to * when none is provided."""
+    def select(self, *fields: "str | Field") -> "Repository[T_schema, T_domain, U]":
+        """Set the SELECT fields. Accepts one or more field strings; defaults to * when none is provided. Field can be a string or a Field object from entities."""
         current_builder = self._get_or_create_query_builder()
         new_builder = current_builder.select(*fields)
         return self._clone_with_query_builder(new_builder)

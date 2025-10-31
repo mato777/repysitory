@@ -187,14 +187,16 @@ class QueryBuilder:
         # This avoids issues with overlapping replacements
         return re.sub(r"\$(\d+)", replace_param, condition)
 
-    def select(self, *fields: str) -> "QueryBuilder":
-        """Set the SELECT fields. Accepts one string or multiple field strings."""
+    def select(self, *fields: "str | Field") -> "QueryBuilder":
+        """Set the SELECT fields. Accepts one string or multiple field strings. Field can be a string or a Field object from entities."""
         new_builder = self._clone()
         if not fields:
             new_builder.select_fields = "*"
             new_builder.select_alias_map = {}
         else:
-            new_builder.select_fields = ", ".join(fields)
+            # Convert Field objects to strings using _to_field_name
+            field_strings = [self._to_field_name(field) for field in fields]
+            new_builder.select_fields = ", ".join(field_strings)
             # Build alias map for use in HAVING
             alias_map: dict[str, str] = {}
             import re
@@ -202,7 +204,7 @@ class QueryBuilder:
             alias_pattern = re.compile(
                 r"^(.*?)\s+as\s+([A-Za-z_][A-Za-z0-9_]*)$", re.IGNORECASE
             )
-            for raw in fields:
+            for raw in field_strings:
                 part = raw.strip()
                 m = alias_pattern.match(part)
                 if m:

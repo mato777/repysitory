@@ -184,6 +184,32 @@ class TestQueryBuilderWithFields:
         )
         assert params == [True, "tech", "news"]
 
+    def test_select_with_field(self):
+        """Test SELECT with Field object"""
+        builder = QueryBuilder("posts")
+        query, params = builder.select(PostSchema.id, PostSchema.title).build()
+
+        assert query == "SELECT id, title FROM posts"
+        assert params == []
+
+    def test_select_with_mixed_string_and_field(self):
+        """Test SELECT with mix of string and Field objects"""
+        builder = QueryBuilder("posts")
+        query, params = builder.select(
+            "id", PostSchema.title, PostSchema.published
+        ).build()
+
+        assert query == "SELECT id, title, published FROM posts"
+        assert params == []
+
+    def test_select_single_field_object(self):
+        """Test SELECT with a single Field object"""
+        builder = QueryBuilder("posts")
+        query, params = builder.select(PostSchema.title).build()
+
+        assert query == "SELECT title FROM posts"
+        assert params == []
+
 
 class TestRepositoryWithFields:
     """Test Repository with type-safe Field objects"""
@@ -312,3 +338,39 @@ class TestRepositoryWithFields:
         assert len(posts) == 2
         assert posts[0].title == "JavaScript Guide"
         assert posts[1].title == "Python Tutorial"
+
+    @pytest.mark.asyncio
+    @transactional("test_db")
+    async def test_repository_select_with_field(self, repository, sample_posts):
+        """Test repository SELECT with Field object"""
+        await self.setup_test_data(sample_posts)
+
+        # Query using Field object in select
+        results = await repository.select(PostSchema.id, PostSchema.title).get()
+
+        # Should return dictionaries with only id and title
+        assert len(results) == 3
+        assert all("id" in result for result in results)
+        assert all("title" in result for result in results)
+        # Should NOT have other fields like content
+        assert all("content" not in result for result in results)
+
+    @pytest.mark.asyncio
+    @transactional("test_db")
+    async def test_repository_select_with_field_and_where(
+        self, repository, sample_posts
+    ):
+        """Test repository SELECT with Field object combined with WHERE using Field"""
+        await self.setup_test_data(sample_posts)
+
+        # Query using Field objects in both select and where
+        results = await (
+            repository.select(PostSchema.id, PostSchema.title)
+            .where(PostSchema.published, True)
+            .get()
+        )
+
+        # Should return only published posts with id and title
+        assert len(results) == 2
+        assert all("id" in result for result in results)
+        assert all("title" in result for result in results)
