@@ -1,7 +1,8 @@
 """
-Integration tests for SoftDeleteFeature with actual database operations
+Integration tests for automatic soft delete with actual database operations
 
-These tests verify that soft delete works correctly with real database operations.
+These tests verify that soft delete works correctly with real database operations
+when deleted_at field is present in the schema.
 """
 
 from datetime import datetime
@@ -13,8 +14,6 @@ from pydantic import BaseModel
 
 from src.db_context import DatabaseManager
 from src.entities import BaseEntity
-from src.features.soft_delete_feature import SoftDeleteFeature
-from src.features.timestamp_feature import TimestampFeature
 from src.repository import Repository, RepositoryConfig
 
 
@@ -24,6 +23,7 @@ class Product(BaseEntity):
     name: str
     price: float
     category: str | None = None
+    deleted_at: datetime | None = None  # Enables automatic soft delete handling
 
 
 class ProductSearch(BaseModel):
@@ -89,25 +89,35 @@ async def setup_soft_delete_with_timestamps_table(test_db_pool):
 
 @pytest.fixture
 def product_repo_with_soft_delete():
-    """Repository with soft delete enabled"""
+    """Repository with soft delete enabled (via deleted_at field in schema)"""
     return Repository(
         entity_schema_class=Product,
         entity_domain_class=Product,
         update_class=ProductUpdate,
         table_name="products",
-        config=RepositoryConfig(features=[SoftDeleteFeature()]),
+        config=RepositoryConfig(),
     )
 
 
 @pytest.fixture
 def product_repo_with_all_features():
-    """Repository with both timestamps and soft delete"""
+    """Repository with both timestamps and soft delete (via fields in schema)"""
+
+    # Need a different product class with timestamps
+    class ProductWithTimestamps(BaseEntity):
+        name: str
+        price: float
+        category: str | None = None
+        created_at: datetime
+        updated_at: datetime
+        deleted_at: datetime | None = None
+
     return Repository(
-        entity_schema_class=Product,
-        entity_domain_class=Product,
+        entity_schema_class=ProductWithTimestamps,
+        entity_domain_class=ProductWithTimestamps,
         update_class=ProductUpdate,
         table_name="products",
-        config=RepositoryConfig(features=[TimestampFeature(), SoftDeleteFeature()]),
+        config=RepositoryConfig(),
     )
 
 

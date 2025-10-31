@@ -17,6 +17,8 @@ class TimestampedEntity(BaseEntity):
 
     name: str
     description: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class TimestampedEntitySearch(BaseModel):
@@ -64,36 +66,32 @@ class TestTimestampFunctionality:
     @pytest.fixture
     def timestamped_repo(self):
         """Repository with timestamps enabled"""
-        from src.repository import RepositoryConfig
-
         return Repository(
             entity_schema_class=TimestampedEntity,
             entity_domain_class=TimestampedEntity,
             update_class=TimestampedEntityUpdate,
             table_name="timestamped_entities",
-            config=RepositoryConfig(timestamps=True),
         )
 
     @pytest.fixture
     def non_timestamped_repo(self):
         """Repository without timestamps"""
-        from src.repository import RepositoryConfig
-
         return Repository(
             entity_schema_class=NonTimestampedEntity,
             entity_domain_class=NonTimestampedEntity,
             update_class=NonTimestampedEntityUpdate,
             table_name="non_timestamped_entities",
-            config=RepositoryConfig(timestamps=False),
         )
 
     def test_timestamp_injection_on_create(self, timestamped_repo):
         """Test that timestamps are injected when creating entities"""
         entity = TimestampedEntity(name="Test Entity", description="Test Description")
 
-        # Test timestamp injection using feature hooks
+        # Test timestamp injection using automatic fields based on schema
         fields = entity.model_dump()
-        injected_fields = timestamped_repo._apply_feature_hooks(fields, is_create=True)
+        injected_fields = timestamped_repo._apply_automatic_fields(
+            fields, is_create=True
+        )
 
         assert "created_at" in injected_fields
         assert "updated_at" in injected_fields
@@ -108,7 +106,7 @@ class TestTimestampFunctionality:
         """Test that only updated_at is injected when updating entities"""
         update_data = {"name": "Updated Name"}
 
-        injected_data = timestamped_repo._apply_feature_hooks(
+        injected_data = timestamped_repo._apply_automatic_fields(
             update_data, is_create=False
         )
 
@@ -127,7 +125,7 @@ class TestTimestampFunctionality:
         )
 
         fields = entity.model_dump()
-        injected_fields = non_timestamped_repo._apply_feature_hooks(
+        injected_fields = non_timestamped_repo._apply_automatic_fields(
             fields, is_create=True
         )
 
@@ -143,7 +141,7 @@ class TestTimestampFunctionality:
             "description": "Test Description",
         }
 
-        injected_data = timestamped_repo._apply_feature_hooks(
+        injected_data = timestamped_repo._apply_automatic_fields(
             original_data, is_create=True
         )
 
@@ -165,9 +163,9 @@ class TestTimestampFunctionality:
         data1 = {"name": "Entity 1"}
         data2 = {"name": "Entity 2"}
 
-        injected1 = timestamped_repo._apply_feature_hooks(data1, is_create=True)
+        injected1 = timestamped_repo._apply_automatic_fields(data1, is_create=True)
         time.sleep(0.001)  # Small delay to ensure different timestamps
-        injected2 = timestamped_repo._apply_feature_hooks(data2, is_create=True)
+        injected2 = timestamped_repo._apply_automatic_fields(data2, is_create=True)
 
         assert injected1["created_at"] != injected2["created_at"]
         assert injected1["updated_at"] != injected2["updated_at"]
@@ -175,7 +173,7 @@ class TestTimestampFunctionality:
     def test_timestamp_format_is_datetime_object(self, timestamped_repo):
         """Test that timestamps are datetime objects"""
         data = {"name": "Test Entity"}
-        injected_data = timestamped_repo._apply_feature_hooks(data, is_create=True)
+        injected_data = timestamped_repo._apply_automatic_fields(data, is_create=True)
 
         timestamp = injected_data["created_at"]
 
@@ -187,7 +185,7 @@ class TestTimestampFunctionality:
         """Test timestamp injection with empty data dictionary"""
         empty_data = {}
 
-        injected_data = timestamped_repo._apply_feature_hooks(
+        injected_data = timestamped_repo._apply_automatic_fields(
             empty_data, is_create=True
         )
 
@@ -203,7 +201,7 @@ class TestTimestampFunctionality:
             "optional_field": None,
         }
 
-        injected_data = timestamped_repo._apply_feature_hooks(
+        injected_data = timestamped_repo._apply_automatic_fields(
             data_with_none, is_create=True
         )
 
@@ -216,26 +214,24 @@ class TestTimestampFunctionality:
         assert "created_at" in injected_data
         assert "updated_at" in injected_data
 
-    def test_repository_constructor_with_timestamps(self):
-        """Test Repository constructor with timestamps parameter"""
-        from src.repository import RepositoryConfig
-
+    def test_repository_constructor_with_timestamp_fields(self):
+        """Repository detects timestamp fields from schema"""
         repo = Repository(
             entity_schema_class=TimestampedEntity,
             entity_domain_class=TimestampedEntity,
             update_class=TimestampedEntityUpdate,
             table_name="test_table",
-            config=RepositoryConfig(timestamps=True),
         )
 
-        assert repo.config.timestamps is True
+        assert repo._has_created_at is True
+        assert repo._has_updated_at is True
         assert repo.entity_schema_class == TimestampedEntity
         assert repo.entity_domain_class == TimestampedEntity
         assert repo.update_class == TimestampedEntityUpdate
         assert repo.table_name == "test_table"
 
-    def test_repository_constructor_without_timestamps(self):
-        """Test Repository constructor without timestamps parameter"""
+    def test_repository_constructor_without_timestamp_fields(self):
+        """Repository detects absence of timestamp fields from schema"""
         repo = Repository(
             entity_schema_class=NonTimestampedEntity,
             entity_domain_class=NonTimestampedEntity,
@@ -243,21 +239,20 @@ class TestTimestampFunctionality:
             table_name="test_table",
         )
 
-        assert repo.config.timestamps is False
+        assert repo._has_created_at is False
+        assert repo._has_updated_at is False
 
-    def test_repository_constructor_timestamps_default_false(self):
-        """Test Repository constructor with timestamps defaulting to False"""
-        from src.repository import RepositoryConfig
-
+    def test_repository_constructor_flags_default_from_schema(self):
+        """Repository flags default to schema field detection"""
         repo = Repository(
             entity_schema_class=NonTimestampedEntity,
             entity_domain_class=NonTimestampedEntity,
             update_class=NonTimestampedEntityUpdate,
             table_name="test_table",
-            config=RepositoryConfig(timestamps=False),
         )
 
-        assert repo.config.timestamps is False
+        assert repo._has_created_at is False
+        assert repo._has_updated_at is False
 
     def test_clone_with_query_builder_preserves_timestamps_setting(
         self, timestamped_repo
@@ -268,7 +263,8 @@ class TestTimestampFunctionality:
         query_builder = QueryBuilder("test_table")
         cloned_repo = timestamped_repo._clone_with_query_builder(query_builder)
 
-        assert cloned_repo.config.timestamps is True
+        assert cloned_repo._has_created_at is True
+        assert cloned_repo._has_updated_at is True
         assert cloned_repo.entity_schema_class == timestamped_repo.entity_schema_class
         assert cloned_repo.update_class == timestamped_repo.update_class
         assert cloned_repo.table_name == timestamped_repo.table_name

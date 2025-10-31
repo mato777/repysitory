@@ -1,15 +1,14 @@
 """Repository class"""
 
+from datetime import UTC, datetime
 from typing import Any, TypeVar
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 from src.database_operations import DatabaseOperations
 from src.db_context import DatabaseManager
 from src.entity_mapper import EntityMapper
-from src.features.base_feature import RepositoryFeature
-from src.features.timestamp_feature import TimestampFeature
 from src.query_builder import QueryBuilder
 
 T_schema = TypeVar(
@@ -25,22 +24,6 @@ class RepositoryConfig(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     db_schema: str | None = Field(default=None, description="Database schema name")
-    timestamps: bool = Field(
-        default=False,
-        description="Enable automatic timestamp management (backward compatibility)",
-    )
-    features: list[RepositoryFeature] = Field(
-        default_factory=list, description="List of repository features to enable"
-    )
-
-    @model_validator(mode="after")
-    def setup_features(self) -> "RepositoryConfig":
-        """Auto-create TimestampFeature if timestamps=True for backward compatibility"""
-        if self.timestamps and not any(
-            isinstance(f, TimestampFeature) for f in self.features
-        ):
-            self.features.append(TimestampFeature())
-        return self
 
 
 class Repository[T_schema: BaseModel, T_domain: BaseModel, U: BaseModel]:
@@ -63,16 +46,7 @@ class Repository[T_schema: BaseModel, T_domain: BaseModel, U: BaseModel]:
         update_class: type[U] | None = None,
         table_name: str | None = None,
         config: RepositoryConfig | None = None,
-        # Backward compatibility: if entity_class is provided, use it as both schema and domain
-        entity_class: type[Any] | None = None,
-        update_class_old: type[U] | None = None,
     ):
-        # Backward compatibility: handle old signature
-        if entity_class is not None:
-            entity_schema_class = entity_class
-            entity_domain_class = entity_class
-            update_class = update_class_old
-
         if entity_schema_class is None:
             raise ValueError("entity_schema_class is required")
         if table_name is None:
@@ -100,16 +74,19 @@ class Repository[T_schema: BaseModel, T_domain: BaseModel, U: BaseModel]:
         self._include_trashed: bool = False
         self._only_trashed: bool = False
 
-        # Apply features to augment entity schema class (for DB operations)
-        self._entity_schema_class_with_features = entity_schema_class
-        for feature in self.config.features:
-            self._entity_schema_class_with_features = feature.augment_entity_class(
-                self._entity_schema_class_with_features
-            )
+        # Detect automatic field handling based on schema fields
+        schema_fields = (
+            entity_schema_class.model_fields
+            if hasattr(entity_schema_class, "model_fields")
+            else {}
+        )
+        self._has_created_at = "created_at" in schema_fields
+        self._has_updated_at = "updated_at" in schema_fields
+        self._has_deleted_at = "deleted_at" in schema_fields
 
         # Composition: Inject dependencies
         self.db_ops = DatabaseOperations()
-        self.entity_mapper = EntityMapper(self._entity_schema_class_with_features)
+        self.entity_mapper = EntityMapper(entity_schema_class)
 
     def to_domain_entity(self, schema_entity: T_schema) -> T_domain:
         """Convert schema entity to domain entity.
@@ -154,30 +131,32 @@ class Repository[T_schema: BaseModel, T_domain: BaseModel, U: BaseModel]:
         new_repo._only_trashed = self._only_trashed
         return new_repo
 
-    def _has_soft_delete_feature(self) -> bool:
-        """Check if the soft delete feature is enabled"""
-        from src.features.soft_delete_feature import SoftDeleteFeature
-
-        return any(isinstance(f, SoftDeleteFeature) for f in self.config.features)
-
-    def _get_soft_delete_feature(self):
-        """Get the soft delete feature instance if enabled"""
-        from src.features.soft_delete_feature import SoftDeleteFeature
-
-        for feature in self.config.features:
-            if isinstance(feature, SoftDeleteFeature):
-                return feature
-        return None
-
-    def _apply_feature_hooks(
+    def _apply_automatic_fields(
         self, data: dict[str, Any], is_create: bool = True
     ) -> dict[str, Any]:
-        """Apply feature hooks to data (before creation or update)"""
-        for feature in self.config.features:
-            if is_create:
-                data = feature.before_create(data)
-            else:
-                data = feature.before_update(data)
+        """Automatically handle created_at, updated_at, and deleted_at fields"""
+        current_time = datetime.now(UTC)
+
+        if is_create:
+            # On create, set created_at and updated_at if not provided
+            if self._has_created_at and (
+                "created_at" not in data or data.get("created_at") is None
+            ):
+                data["created_at"] = current_time
+            if self._has_updated_at and (
+                "updated_at" not in data or data.get("updated_at") is None
+            ):
+                data["updated_at"] = current_time
+            # On create, set deleted_at to None if field exists
+            if self._has_deleted_at and "deleted_at" not in data:
+                data["deleted_at"] = None
+        else:
+            # On update, set updated_at if field exists
+            if self._has_updated_at and (
+                "updated_at" not in data or data.get("updated_at") is None
+            ):
+                data["updated_at"] = current_time
+
         return data
 
     # Fluent query methods that return a new repository instance
@@ -289,9 +268,9 @@ class Repository[T_schema: BaseModel, T_domain: BaseModel, U: BaseModel]:
         if self._query_builder is None:
             self._query_builder = QueryBuilder(self._qualified_table_name)
 
-        # Apply soft delete filters if enabled
+        # Apply soft delete filters if deleted_at field exists
         query_builder = self._query_builder
-        if self._has_soft_delete_feature():
+        if self._has_deleted_at:
             if self._only_trashed:
                 # Only return soft-deleted records (deleted_at IS NOT NULL)
                 query_builder = query_builder.where("deleted_at", "!=", None)
@@ -316,8 +295,8 @@ class Repository[T_schema: BaseModel, T_domain: BaseModel, U: BaseModel]:
         """Execute the query and return the first matching domain entity"""
         current_builder = self._get_or_create_query_builder()
 
-        # Apply soft delete filters if enabled
-        if self._has_soft_delete_feature():
+        # Apply soft delete filters if deleted_at field exists
+        if self._has_deleted_at:
             if self._only_trashed:
                 # Only return soft-deleted records (deleted_at IS NOT NULL)
                 current_builder = current_builder.where("deleted_at", "!=", None)
@@ -338,8 +317,8 @@ class Repository[T_schema: BaseModel, T_domain: BaseModel, U: BaseModel]:
         """Execute the query and return the count of matching records"""
         current_builder = self._get_or_create_query_builder()
 
-        # Apply soft delete filters if enabled
-        if self._has_soft_delete_feature():
+        # Apply soft delete filters if deleted_at field exists
+        if self._has_deleted_at:
             if self._only_trashed:
                 # Only count soft-deleted records (deleted_at IS NOT NULL)
                 current_builder = current_builder.where("deleted_at", "!=", None)
@@ -391,7 +370,14 @@ class Repository[T_schema: BaseModel, T_domain: BaseModel, U: BaseModel]:
     async def create(self, entity: T_domain) -> T_domain:
         """Create a new domain entity"""
         fields = entity.model_dump()
-        fields = self._apply_feature_hooks(fields, is_create=True)
+        fields = self._apply_automatic_fields(fields, is_create=True)
+
+        # Only persist columns that exist in the schema definition
+        schema_field_names = set(
+            getattr(self.entity_schema_class, "model_fields", {}).keys()
+        )
+        if schema_field_names:
+            fields = {k: v for k, v in fields.items() if k in schema_field_names}
 
         columns = ", ".join(fields.keys())
         values = list(fields.values())
@@ -402,8 +388,8 @@ class Repository[T_schema: BaseModel, T_domain: BaseModel, U: BaseModel]:
             values,
         )
 
-        # Create schema entity with features applied, then convert to domain
-        schema_entity = self._entity_schema_class_with_features(**fields)
+        # Create schema entity, then convert to domain
+        schema_entity = self.entity_schema_class(**fields)
         return self.to_domain_entity(schema_entity)  # type: ignore[arg-type]
 
     async def create_many(self, entities: list[T_domain]) -> list[T_domain]:
@@ -413,9 +399,16 @@ class Repository[T_schema: BaseModel, T_domain: BaseModel, U: BaseModel]:
 
         # Process the first entity to get field structure
         first_entity_fields = entities[0].model_dump()
-        first_entity_fields = self._apply_feature_hooks(
+        first_entity_fields = self._apply_automatic_fields(
             first_entity_fields, is_create=True
         )
+        schema_field_names = set(
+            getattr(self.entity_schema_class, "model_fields", {}).keys()
+        )
+        if schema_field_names:
+            first_entity_fields = {
+                k: v for k, v in first_entity_fields.items() if k in schema_field_names
+            }
         fields = first_entity_fields.keys()
         columns = ", ".join(fields)
 
@@ -425,7 +418,11 @@ class Repository[T_schema: BaseModel, T_domain: BaseModel, U: BaseModel]:
 
         for i, entity in enumerate(entities):
             entity_fields = entity.model_dump()
-            entity_fields = self._apply_feature_hooks(entity_fields, is_create=True)
+            entity_fields = self._apply_automatic_fields(entity_fields, is_create=True)
+            if schema_field_names:
+                entity_fields = {
+                    k: v for k, v in entity_fields.items() if k in schema_field_names
+                }
             entity_values = list(entity_fields.values())
             all_values.extend(entity_values)
 
@@ -441,12 +438,16 @@ class Repository[T_schema: BaseModel, T_domain: BaseModel, U: BaseModel]:
             all_values,
         )
 
-        # Return domain entities with features applied
+        # Return domain entities
         result_entities = []
         for entity in entities:
             entity_fields = entity.model_dump()
-            entity_fields = self._apply_feature_hooks(entity_fields, is_create=True)
-            schema_entity = self._entity_schema_class_with_features(**entity_fields)
+            entity_fields = self._apply_automatic_fields(entity_fields, is_create=True)
+            if schema_field_names:
+                entity_fields = {
+                    k: v for k, v in entity_fields.items() if k in schema_field_names
+                }
+            schema_entity = self.entity_schema_class(**entity_fields)
             result_entities.append(self.to_domain_entity(schema_entity))  # type: ignore[arg-type]
 
         return result_entities
@@ -456,7 +457,7 @@ class Repository[T_schema: BaseModel, T_domain: BaseModel, U: BaseModel]:
         # Use exclude_unset to only include fields that were explicitly set.
         # This allows None values (for restoration) while excluding unset fields
         update_dict = update_data.model_dump(exclude_unset=True)
-        update_dict = self._apply_feature_hooks(update_dict, is_create=False)
+        update_dict = self._apply_automatic_fields(update_dict, is_create=False)
 
         if not update_dict:
             return await self.find_by_id(entity_id)
@@ -485,7 +486,7 @@ class Repository[T_schema: BaseModel, T_domain: BaseModel, U: BaseModel]:
         # Use exclude_unset to only include fields that were explicitly set.
         # This allows None values (for restoration) while excluding unset fields
         update_dict = update_data.model_dump(exclude_unset=True)
-        update_dict = self._apply_feature_hooks(update_dict, is_create=False)
+        update_dict = self._apply_automatic_fields(update_dict, is_create=False)
 
         if not update_dict:
             # Nothing to update
@@ -526,10 +527,8 @@ class Repository[T_schema: BaseModel, T_domain: BaseModel, U: BaseModel]:
         """
         # If entity_id provided, delete single entity
         if entity_id is not None:
-            if self._has_soft_delete_feature():
+            if self._has_deleted_at:
                 # Softly delete: set deleted_at to the current timestamp
-                from datetime import UTC, datetime
-
                 deleted_at = datetime.now(UTC)
 
                 result = await self.db_ops.execute_query(
@@ -569,10 +568,9 @@ class Repository[T_schema: BaseModel, T_domain: BaseModel, U: BaseModel]:
         else:
             raise ValueError("Cannot delete without WHERE conditions")
 
-        if self._has_soft_delete_feature():
+        if self._has_deleted_at:
             # Softly delete: set deleted_at for all matching records
             import re
-            from datetime import UTC, datetime
 
             deleted_at = datetime.now(UTC)
 
@@ -608,8 +606,8 @@ class Repository[T_schema: BaseModel, T_domain: BaseModel, U: BaseModel]:
 
     async def restore(self, entity_id: UUID) -> T_domain | None:
         """Restore a soft-deleted entity by setting deleted_at to None"""
-        if not self._has_soft_delete_feature():
-            # Can't restore if soft delete is not enabled
+        if not self._has_deleted_at:
+            # Can't restore if deleted_at field is not in schema
             return None
 
         result = await self.db_ops.execute_query(

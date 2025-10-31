@@ -149,30 +149,19 @@ Tips
   - `exists()` - Check if any records match
 - **Repository Configuration** - Type-safe configuration using `RepositoryConfig`
   - `db_schema` - Optional database schema name for multi-schema support
-  - `timestamps` - Enable automatic `created_at` and `updated_at` management (backward compatible)
-  - `features` - Extensible feature system for pluggable functionality
 - **Schema Support** - Multi-schema database support
 - **Pydantic Integration** - Full Pydantic model support for entities, search, and updates
 
-### Repository Feature System ⭐ NEW
-- **Pluggable Features** - Composable feature system for adding functionality
-- **Built-in Features**
-  - `TimestampFeature` - Automatic `created_at` and `updated_at` management
-- **Custom Features** - Easy to create custom features by implementing `RepositoryFeature`
-  - `before_create(data)` - Hook called before entity creation
-  - `before_update(data)` - Hook called before entity update
-  - `augment_entity_class(entity_class)` - Hook to add fields to entity class
-- **Feature Composition** - Combine multiple features in a single repository
-- **Example Custom Features**
-  - Soft Delete (adds `deleted_at` field)
-  - Audit Logging (adds `created_by`, `updated_by` fields)
-  - Data Validation (validates before create/update)
-  - See `examples/feature_system_example.py` for full examples
-- **Benefits**
-  - Single Responsibility - Each feature has one job
-  - Composability - Mix and match features as needed
-  - Extensibility - Add features without modifying Repository
-  - Testability - Test features in isolation
+### Automatic Field Management ⭐
+- **Timestamps** - Simply add `created_at` and/or `updated_at` datetime fields to your schema
+- **Soft Delete** - Add `deleted_at: datetime | None` field to enable soft delete
+  - `delete()` automatically sets `deleted_at` instead of hard deleting
+  - Queries automatically exclude soft-deleted records
+  - Use `with_trashed()` to include deleted records
+  - Use `only_trashed()` to query only deleted records
+  - Use `restore()` to un-delete records
+- **No Configuration** - The repository detects these fields automatically
+- See `examples/feature_system_example.py` for full examples
 
 ### Database Context & Transaction Management
 - **Connection Pooling** - Named database pool management with `DatabaseManager`

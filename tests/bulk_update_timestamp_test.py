@@ -14,6 +14,8 @@ class TPost(BaseEntity):
     title: str
     content: str
     published: bool = False
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class TPostSearch(BaseModel):
@@ -48,14 +50,11 @@ async def timestamped_repo(test_db_pool):
             """
         )
 
-    from src.repository import RepositoryConfig
-
     return Repository(
         entity_schema_class=TPost,
         entity_domain_class=TPost,
         update_class=TPostUpdate,
         table_name="timestamped_posts",
-        config=RepositoryConfig(timestamps=True),
     )
 
 

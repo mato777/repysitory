@@ -20,6 +20,27 @@ class TimestampedPost(BaseEntity):
     title: str
     content: str
     published: bool = False
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class NonTimestampedPost(BaseEntity):
+    """Post entity without timestamps"""
+
+    title: str
+    content: str
+    published: bool = False
+
+
+class BusinessPost(BaseEntity):
+    """Business/domain entity without timestamp fields.
+
+    Used to validate separation between schema (DB) and domain (business).
+    """
+
+    title: str
+    content: str
+    published: bool = False
 
 
 class TimestampedPostSearch(BaseModel):
@@ -60,14 +81,11 @@ class TestTimestampIntegration:
                 )
             """)
 
-        from src.repository import RepositoryConfig
-
         return Repository(
             entity_schema_class=TimestampedPost,
             entity_domain_class=TimestampedPost,
             update_class=TimestampedPostUpdate,
             table_name="timestamped_posts",
-            config=RepositoryConfig(timestamps=True),
         )
 
     @pytest_asyncio.fixture
@@ -84,14 +102,36 @@ class TestTimestampIntegration:
                 )
             """)
 
-        from src.repository import RepositoryConfig
-
         return Repository(
-            entity_schema_class=TimestampedPost,
-            entity_domain_class=TimestampedPost,
+            entity_schema_class=NonTimestampedPost,
+            entity_domain_class=NonTimestampedPost,
             update_class=TimestampedPostUpdate,
             table_name="non_timestamped_posts",
-            config=RepositoryConfig(timestamps=False),
+        )
+
+    @pytest_asyncio.fixture
+    async def timestamped_schema_non_timestamped_domain_repo(self, test_db_pool):
+        """Repository where schema has timestamps but domain does not."""
+        async with test_db_pool.acquire() as conn:
+            # Ensure table with timestamp columns exists
+            await conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS timestamped_posts (
+                    id UUID PRIMARY KEY,
+                    title VARCHAR(255) NOT NULL,
+                    content TEXT,
+                    published BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP WITH TIME ZONE,
+                    updated_at TIMESTAMP WITH TIME ZONE
+                )
+                """
+            )
+
+        return Repository(
+            entity_schema_class=TimestampedPost,  # includes timestamps
+            entity_domain_class=BusinessPost,  # does NOT include timestamps
+            update_class=TimestampedPostUpdate,
+            table_name="timestamped_posts",
         )
 
     @pytest.mark.asyncio
@@ -287,3 +327,30 @@ class TestTimestampIntegration:
         ).get()
         assert len(found_posts) == 1
         assert found_posts[0].id == created_post.id
+
+    @pytest.mark.asyncio
+    @transactional("test_db")
+    async def test_schema_timestamps_domain_without_fields(
+        self, timestamped_schema_non_timestamped_domain_repo
+    ):
+        """When schema has timestamps but domain model doesn't, repository still injects timestamps and they are accessible."""
+        post = BusinessPost(id=uuid4(), title="Biz Post", content="Biz content")
+        created = await timestamped_schema_non_timestamped_domain_repo.create(post)
+
+        # Domain doesn't define fields but should expose them via extras
+        assert hasattr(created, "created_at")
+        assert hasattr(created, "updated_at")
+        assert isinstance(created.created_at, datetime)
+        assert isinstance(created.updated_at, datetime)
+        assert created.created_at == created.updated_at
+
+        import time
+
+        time.sleep(0.001)
+        updated = await timestamped_schema_non_timestamped_domain_repo.update(
+            created.id, TimestampedPostUpdate(title="Biz Updated")
+        )
+
+        assert updated.title == "Biz Updated"
+        assert updated.created_at == created.created_at
+        assert updated.updated_at > created.updated_at

@@ -23,7 +23,7 @@ from src.entities import BaseEntity
 from src.repository import Repository
 
 
-# Example entity with automatic timestamps
+# Domain/business entity (no timestamp fields on purpose)
 class BlogPost(BaseEntity):
     title: str
     content: str
@@ -52,6 +52,17 @@ class BlogPostUpdate(BaseModel):
     published: bool | None = None
 
 
+# Schema (DB structure) with timestamps opt-in
+class BlogPostSchema(BaseModel):
+    id: UUID
+    title: str
+    content: str | None = None
+    author: str | None = None
+    published: bool = False
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 async def demonstrate_timestamp_functionality():
     """Demonstrate automatic timestamp functionality"""
 
@@ -75,14 +86,12 @@ async def demonstrate_timestamp_functionality():
             """)
             await conn.commit()
 
-        # Create repository with timestamps enabled
-        from src.repository import RepositoryConfig
-
+        # Create repository: schema includes timestamps; domain omits them
         post_repo = Repository(
-            entity_class=BlogPost,
+            entity_schema_class=BlogPostSchema,
+            entity_domain_class=BlogPost,
             update_class=BlogPostUpdate,
             table_name="blog_posts",
-            config=RepositoryConfig(timestamps=True),  # Enable automatic timestamps
         )
 
         print("=== Automatic Timestamp Functionality Demo ===\n")
@@ -148,42 +157,51 @@ async def demonstrate_timestamp_functionality():
 
         # 4. Search by timestamp
         print("4. Searching by timestamp...")
-        # Find posts created today
-        today = datetime.now().strftime("%Y-%m-%d")
-        _search_criteria = BlogPostSearch(created_at=f"{today}%")  # Posts created today
-
-        # Note: This is a simplified search - in practice you'd use proper date range queries
-        all_posts = await post_repo.find_many_by()
-        print(f"   Found {len(all_posts)} total posts")
-        for post in all_posts:
+        # Find posts by exact created_at using fluent interface
+        found = await post_repo.where("created_at", created_post.created_at).get()
+        print(f"   Found {len(found)} matching posts for created_at")
+        for post in found:
             print(
                 f"   - {post.title} (created: {post.created_at}, updated: {post.updated_at})"
             )
         print()
 
-        # 5. Demonstrate repository without timestamps
-        print("5. Comparing with repository without timestamps...")
+        # 5. Demonstrate repository where schema does not include timestamps
+        print("5. Comparing with repository without timestamps (separate table)...")
+        async with db_manager.transactional() as conn:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS blog_posts_no_ts (
+                    id UUID PRIMARY KEY,
+                    title VARCHAR(255) NOT NULL,
+                    content TEXT,
+                    author VARCHAR(100),
+                    published BOOLEAN DEFAULT FALSE
+                )
+            """)
+            await conn.commit()
 
-        # Create a repository without timestamps
-        _no_timestamp_repo = Repository(
-            entity_class=BlogPost,
+        class BlogPostSchemaNoTS(BaseModel):
+            id: UUID
+            title: str
+            content: str | None = None
+            author: str | None = None
+            published: bool = False
+
+        no_ts_repo = Repository(
+            entity_schema_class=BlogPostSchemaNoTS,
+            entity_domain_class=BlogPost,
             update_class=BlogPostUpdate,
-            table_name="blog_posts",
-            config=RepositoryConfig(timestamps=False),  # Disable timestamps
+            table_name="blog_posts_no_ts",
         )
 
-        _test_post = BlogPost(
-            id=uuid4(),
-            title="No Timestamp Test",
-            content="This post won't have timestamps",
-            author="Test Author",
+        no_ts_entity = BlogPost(
+            id=uuid4(), title="No TS", content="No ts", author="Author"
         )
-
-        # This would fail in practice because the table has timestamp columns
-        # but the entity doesn't have timestamp fields
-        print("   Repository without timestamps would not add timestamp fields")
-        print("   (This is just for demonstration - actual usage would require")
-        print("   a table without timestamp columns)")
+        created_no_ts = await no_ts_repo.create(no_ts_entity)
+        print("   Created entity in table without timestamp columns")
+        print(
+            f"   Has created_at? {hasattr(created_no_ts, 'created_at')}, Has updated_at? {hasattr(created_no_ts, 'updated_at')}"
+        )
         print()
 
         print("=== Demo Complete ===")

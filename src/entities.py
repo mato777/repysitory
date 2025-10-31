@@ -26,6 +26,11 @@ class Field[T]:
         """
         self._column_name = column_name
 
+    @property
+    def column(self) -> str:
+        """Return the underlying database column name."""
+        return self._column_name
+
     def __str__(self) -> str:
         """Return the column name when used in queries"""
         return self._column_name
@@ -50,9 +55,7 @@ class SchemaBase:
 class BaseEntity(BaseModel):
     """Base entity class for all database models."""
 
-    model_config: ClassVar[ConfigDict] = ConfigDict(
-        use_enum_values=True, extra="ignore"
-    )
+    model_config: ClassVar[ConfigDict] = ConfigDict(use_enum_values=True, extra="allow")
     id: UUID = uuid4()
 
 
